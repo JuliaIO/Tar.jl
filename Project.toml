@@ -1,0 +1,13 @@
+name = "Tar"
+uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
+authors = ["Stefan Karpinski <stefan@karpinski.org>"]
+version = "0.1.0"
+
+[compat]
+julia = "1.4"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
