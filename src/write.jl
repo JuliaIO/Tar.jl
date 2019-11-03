@@ -33,8 +33,9 @@ function write_tar(
     else
         error("unsupported file type: $(repr(sys_path))")
     end
-    if !isempty(tar_path) && isempty(files) # file, link or empty subdirectory
-        w += write_header(out, tar_path, size=size, type=type, mode=mode, link=link, buf=buf)
+    if isempty(files) # non-empty directories are implicit
+        path = isempty(tar_path) ? "." : tar_path
+        w += write_header(out, path, size=size, type=type, mode=mode, link=link, buf=buf)
         size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
     end
     for (name, path) in sort!(files)
@@ -66,6 +67,8 @@ function write_header(
 
     # error checking
     size < 0 && throw(ArgumentError("negative file size is invalid: $size"))
+    path == "." && type != '5' &&
+        throw(ArgumentError("the path '.' must be a directory got type $(repr(type))"))
     check_paths(path, link)
 
     # determine if an extended header is needed
@@ -119,7 +122,7 @@ function check_paths(path::String, link::String)
     # checks for path only
     isempty(path) &&
         throw(ArgumentError("path may not be empty: $(repr(path))"))
-    occursin(r"(^|/)\.\.?(/|$)", path) &&
+    path != "." && occursin(r"(^|/)\.\.?(/|$)", path) &&
         throw(ArgumentError("path may not have '.' or '..' components: $(repr(path))"))
     # checks for link only
     if !isempty(link)

@@ -9,6 +9,16 @@ function gen_file(file::String, size::Int)
     end
 end
 
+@testset "create tarball of empty tree" begin
+    dir = mktempdir()
+    tarball = Tar.create(dir)
+    dir′ = mktempdir()
+    run(`tar -C $dir′ -xf $tarball`)
+    @test isempty(readdir(dir′))
+    rm(dir, force=true, recursive=true)
+    rm(dir′, force=true, recursive=true)
+end
+
 @testset "create git hash equality" begin
     top = mktempdir()
     let i = 0, paths = String[]
