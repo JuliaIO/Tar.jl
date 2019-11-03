@@ -33,7 +33,7 @@ function write_tar(
     else
         error("unsupported file type: $(repr(sys_path))")
     end
-    if !isempty(tar_path)
+    if !isempty(tar_path) && isempty(files) # file, link or empty subdirectory
         w += write_header(out, tar_path, size=size, type=type, mode=mode, link=link, buf=buf)
         size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
     end
