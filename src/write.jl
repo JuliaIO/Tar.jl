@@ -5,41 +5,40 @@ function write_tar(
     tar_path::String = ""; # path in the tarball
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
-    predicate(sys_path) || return 0
     w = 0
     st = lstat(sys_path)
-    if !isempty(tar_path)
-        if islink(st)
-            size = 0
-            type = '2'
-            mode = 0o755
-            link = readlink(sys_path)
-        elseif isfile(st)
-            size = filesize(st)
-            type = '0'
-            # TODO: git's executable criteria w/r/t user, group, other?
-            mode = iszero(filemode(st) & 0o111) ? 0o644 : 0o755
-            link = ""
-        elseif isdir(st)
-            size = 0
-            type = '5'
-            mode = 0o755
-            link = ""
-        else
-            error("unsupported file type: $(repr(sys_path))")
+    files = Tuple{String,String}[]
+    if islink(st)
+        size = 0
+        type = '2'
+        mode = 0o755
+        link = readlink(sys_path)
+    elseif isfile(st)
+        size = filesize(st)
+        type = '0'
+        # TODO: git's executable criteria w/r/t user, group, other?
+        mode = iszero(filemode(st) & 0o111) ? 0o644 : 0o755
+        link = ""
+    elseif isdir(st)
+        size = 0
+        type = '5'
+        mode = 0o755
+        link = ""
+        for name in readdir(sys_path, sort = false)
+            path = joinpath(sys_path, name)
+            predicate(path) || continue
+            isdir(path) && (name = "$name/")
+            push!(files, (name, path))
         end
+    else
+        error("unsupported file type: $(repr(sys_path))")
+    end
+    if !isempty(tar_path)
         w += write_header(out, tar_path, size=size, type=type, mode=mode, link=link, buf=buf)
         size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
     end
-    if isdir(st)
-        names = readdir(sys_path, sort = false)
-        sys_paths = [joinpath(sys_path, name) for name in names]
-        for (i, name) in enumerate(names)
-            isdir(sys_paths[i]) && (names[i] = "$name/")
-        end
-        for i in sortperm(names)
-            w += write_tar(predicate, out, sys_paths[i], tar_path * names[i])
-        end
+    for (name, path) in sort!(files)
+        w += write_tar(predicate, out, path, tar_path * name)
     end
     return w
 end
