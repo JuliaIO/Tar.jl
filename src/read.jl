@@ -1,3 +1,11 @@
+struct Header
+    path::String
+    mode::UInt16
+    size::Int64
+    type::Char
+    link::String
+end
+
 function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     resize!(buf, 512)
     read!(io, buf)
@@ -7,7 +15,9 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     @assert n == 512
     name    = read_header_str(buf, 0, 100)
     mode    = read_header_int(buf, 100, 8)
-    size    = read_header_int(buf, 124, 12)
+    size    = buf[124+1] & 0x80 == 0 ?
+              read_header_int(buf, 124, 12) :
+              read_header_bin(buf, 124, 12)
     chksum  = read_header_int(buf, 148, 8)
     type    = read_header_chr(buf, 156)
     link    = read_header_str(buf, 157, 100)
@@ -26,35 +36,40 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     isascii(type) ||
         error("invalid block type indicator: $(repr(type))")
     path = isempty(prefix) ? name : "$prefix/$name"
-    return (
-        path = path,
-        mode = mode,
-        size = size,
-        type = type,
-        link = link,
-    )
+    return Header(path, mode, size, type, link)
 end
 
 index_range(offset::Int, length::Int) = offset .+ (1:length)
 
-read_header_chr(block::Vector{UInt8}, offset::Int) = Char(block[offset+1])
+read_header_chr(buf::Vector{UInt8}, offset::Int) = Char(buf[offset+1])
 
-function read_header_str(block::Vector{UInt8}, offset::Int, length::Int)
+function read_header_str(buf::Vector{UInt8}, offset::Int, length::Int)
     r = index_range(offset, length)
     for i in r
-        byte = block[i]
-        byte == 0 && return String(block[first(r):i-1])
+        byte = buf[i]
+        byte == 0 && return String(buf[first(r):i-1])
     end
-    return String(block[r])
+    return String(buf[r])
 end
 
-function read_header_int(block::Vector{UInt8}, offset::Int, length::Int)
-    n = 0
+function read_header_int(buf::Vector{UInt8}, offset::Int, length::Int)
+    n = UInt64(0)
     for i in index_range(offset, length)
-        byte = block[i]
-        UInt8('0') <= byte <= UInt8('7') || break
+        byte = buf[i]
+        byte in (0x00, UInt8(' ')) && break
+        UInt8('0') <= byte <= UInt8('7') ||
+            error("invalid octal digit: $(repr(Char(byte)))")
         n <<= 3
-        n += byte - 0x30
+        n |= byte - 0x30
+    end
+    return n
+end
+
+function read_header_bin(buf::Vector{UInt8}, offset::Int, length::Int)
+    n = UInt64(0)
+    for i in index_range(offset, length)
+        n <<= 8
+        n |= buf[i]
     end
     return n
 end
