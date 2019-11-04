@@ -68,11 +68,11 @@ function write_header(
     # error checking
     size < 0 && throw(ArgumentError("negative file size is invalid: $size"))
     path == "." && type != '5' &&
-        throw(ArgumentError("the path '.' must be a directory got type $(repr(type))"))
+        throw(ArgumentError("path '.' must be a directory; got type $(repr(type))"))
     check_paths(path, link)
 
     # determine if an extended header is needed
-    extended = Pair{String,Union{Int,String}}[]
+    extended = Pair{String,String}[]
     # WARNING: don't change the order of these insertions
     # they are inserted and emitted in sorted order by key
     if ncodeunits(link) > 100
@@ -93,8 +93,8 @@ function write_header(
         end
     end
     if size ≥ 8^12
-        push!(extended, "size" => size)
-        # write in standard header in binary
+        push!(extended, "size" => String(size))
+        # still written in binary in standard header
     end
 
     # emit extended header if necessary
@@ -138,7 +138,7 @@ end
 
 function write_extended_header(
     out::IO,
-    metadata; # must iterate pairs
+    metadata::Vector{Pair{String,String}};
     type::Char = 'x',
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
@@ -146,13 +146,12 @@ function write_extended_header(
         throw(ArgumentError("invalid type flag for extended header: $(repr(type))"))
     d = IOBuffer()
     for (key, value) in metadata
-        key isa Union{String,Symbol} ||
-            throw(ArgumentError("invalid extended header key: $(repr(key))"))
-        value isa Union{String,Integer} ||
-            throw(ArgumentError("invalid extended header value: $(repr(value))"))
+        isvalid(key) ||
+            throw(ArgumentError("extended header key not valid UTF-8: $(repr(key))"))
+        isvalid(value) ||
+            throw(ArgumentError("extended header value not valid UTF-8: $(repr(value))"))
+        # generate key-value entry
         entry = " $key=$value\n"
-        isvalid(entry) ||
-            throw(ArgumentError("invalid extended header entry:$entry"))
         n = l = ncodeunits(entry)
         while n < l + ndigits(n)
             n = l + ndigits(n)
@@ -214,7 +213,7 @@ function write_standard_header(
             write(h, ' ')
         end
     else
-        @assert isempty(name) && isempty(prefix)
+        @assert isempty(name) && isempty(prefix) # after extended header
         # emulate GNU tar: write binary size with leading bit set
         write(h, 0x80 | ((size >> (8*11)) % UInt8))
         for i = 10:-1:0
@@ -258,7 +257,7 @@ function write_data(
     w = s = 0
     while !eof(from)
         s += n = readbytes!(from, buf)
-        buf[n+1:512] .= 0
+        n < 512 && (buf[n+1:512] .= 0)
         w += write(out, buf)
     end
     s == size ||
