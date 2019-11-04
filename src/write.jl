@@ -250,30 +250,30 @@ end
 
 function write_data(
     out::IO,
-    data::IO;
+    from::IO;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
     resize!(buf, 512)
     w = s = 0
-    while !eof(data)
-        s += n = readbytes!(data, buf)
+    while !eof(from)
+        s += n = readbytes!(from, buf)
         buf[n+1:512] .= 0
         w += write(out, buf)
     end
     s == size ||
         throw(@error("data did not have the expected size",
-            got = s, expected = size, source = data))
+            got = s, expected = size, source = from))
     return w
 end
 
 function write_data(
     out::IO,
-    path::String;
+    from::String;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
-    open(path) do data
+    open(from) do data
         write_data(out, data, size=size, buf=buf)
     end
 end
