@@ -1,3 +1,37 @@
+struct Header
+    path::String
+    mode::UInt16
+    size::Int64
+    type::Char
+    link::String
+end
+
+function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
+    hdr = read_standard_header(io, buf=buf)
+    hdr.type in "xg" || return hdr
+    size = path = link = nothing
+    metadata = read_extended_metadata(io, hdr.size, buf=buf)
+    for (key, value) in metadata
+        if key == "size"
+            size = tryparse(UInt64, value)
+            size === nothing &&
+                error("invalid extended header size value: $(repr(value))")
+        elseif key == "path"
+            path = value
+        elseif key == "linkpath"
+            link = value
+        end
+    end
+    hdr = read_standard_header(io, buf=buf)
+    return Header(
+        something(path, hdr.path),
+        hdr.mode,
+        something(size, hdr.size),
+        hdr.type,
+        something(link, hdr.link),
+    )
+end
+
 using Base.Checked: mul_with_overflow, add_with_overflow
 
 function read_extended_metadata(
@@ -41,14 +75,6 @@ function read_extended_metadata(
         i = l
     end
     return metadata
-end
-
-struct Header
-    path::String
-    mode::UInt16
-    size::Int64
-    type::Char
-    link::String
 end
 
 function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))

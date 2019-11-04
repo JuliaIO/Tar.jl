@@ -60,4 +60,5 @@ end
     @test tree_hash(top) == tree_hash(top′)
     rm(top, force=true, recursive=true)
     rm(top′, force=true, recursive=true)
+    rm(tarball, force=true)
 end
