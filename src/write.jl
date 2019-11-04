@@ -139,8 +139,11 @@ end
 function write_extended_header(
     out::IO,
     metadata; # must iterate pairs
+    type::Char = 'x',
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
+    type in "xg" ||
+        throw(ArgumentError("invalid type flag for extended header: $(repr(type))"))
     d = IOBuffer()
     for (key, value) in metadata
         key isa Union{String,Symbol} ||
@@ -158,7 +161,7 @@ function write_extended_header(
         write(d, "$n$entry")
     end
     n = position(d)
-    w = write_standard_header(out, size=n, type='x', buf=buf)
+    w = write_standard_header(out, size=n, type=type, buf=buf)
     w += write_data(out, seekstart(d), size=n, buf=buf)
 end
 
