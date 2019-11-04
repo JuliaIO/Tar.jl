@@ -1,3 +1,48 @@
+using Base.Checked: mul_with_overflow, add_with_overflow
+
+function read_extended_metadata(
+    io::IO,
+    size::Integer;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+)
+    n = readbytes!(io, buf, size)
+    n < size && "premature end of tar file"
+    skip(io, mod(512 - n, 512)) # advance to end of block
+    malformed() = error("malformed extended header metadata: $(repr(String(buf)))")
+    metadata = Pair{String,String}[]
+    i = 0
+    while i < n
+        j, m = i, 0
+        while j ≤ n
+            byte = buf[j += 1]
+            byte == UInt8(' ') && break
+            UInt8('0') ≤ byte ≤ UInt8('9') || malformed()
+            m, fm = mul_with_overflow(m, 10)
+            m, fa = add_with_overflow(m, Int(byte - UInt8('0')))
+            fm | fa && error("extended header record size too large: $(repr(buf))")
+        end
+        k, l = j, i + m
+        while k ≤ l
+            byte = buf[k += 1]
+            byte == UInt8('=') && break
+        end
+        # buf[i+1:j-1] is the length in decimal
+        # buf[j+1:k-1] is the key string
+        # buf[k+1:l-1] is the value string
+        # buf[i] is end of previous
+        # buf[j] is ` ` (space)
+        # buf[k] is `=` (equals)
+        # buf[l] is `\n` (newline)
+        i+1 < j < k < l || malformed()
+        @assert buf[j] == UInt8(' ')
+        @assert buf[k] == UInt8('=')
+        buf[l] == UInt('\n') || malformed()
+        @views push!(metadata, String(buf[j+1:k-1]) => String(buf[k+1:l-1]))
+        i = l
+    end
+    return metadata
+end
+
 struct Header
     path::String
     mode::UInt16
