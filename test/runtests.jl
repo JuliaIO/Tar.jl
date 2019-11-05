@@ -57,6 +57,12 @@ end
     dir = Tar.extract(tarball)
     @test isempty(readdir(dir))
     rm(dir, force=true, recursive=true)
+    open(tarball, append=true) do io
+        write(io, zeros(UInt8, 512))
+    end
+    dir = Tar.extract(tarball)
+    @test isempty(readdir(dir))
+    rm(dir, force=true, recursive=true)
 end
 
 # TODO: test that each kind of file gets the right path
@@ -71,6 +77,14 @@ end
         rm(root, force=true, recursive=true)
     end
     @testset "Tar.extract" begin
+        root = Tar.extract(tarball)
+        @test tree_hash(root) == hash
+        rm(root, force=true, recursive=true)
+    end
+    open(tarball, append=true) do io
+        write(io, zeros(UInt8, 512))
+    end
+    @testset "Tar.extract with trailing zeros" begin
         root = Tar.extract(tarball)
         @test tree_hash(root) == hash
         rm(root, force=true, recursive=true)

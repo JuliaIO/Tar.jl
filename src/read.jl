@@ -12,8 +12,8 @@ function extract_tarball(
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
     while !eof(tar)
-        # TODO: handle stopping for zero blocks
         hdr = read_header(tar, buf=buf)
+        hdr === nothing && break
         # error checking
         hdr.path == "." && hdr.type != '5' &&
             throw(@error("path '.' not a directory", type=hdr.type))
@@ -60,6 +60,7 @@ end
 
 function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr = read_standard_header(io, buf=buf)
+    hdr === nothing && return nothing
     hdr.type in "xg" || return hdr
     size = path = link = nothing
     metadata = read_extended_metadata(io, hdr.size, buf=buf)
@@ -75,6 +76,7 @@ function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
         end
     end
     hdr = read_standard_header(io, buf=buf)
+    hdr === nothing && error("premature end of tar file")
     return Header(
         something(path, hdr.path),
         hdr.mode,
@@ -132,6 +134,7 @@ end
 function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     resize!(buf, 512)
     read!(io, buf)
+    all(iszero, buf) && return nothing
     n = length(buf)
     n == 0 && error("premature end of tar file")
     n < 512 && error("incomplete trailing block with length $n < 512")
