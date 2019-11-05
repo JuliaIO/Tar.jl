@@ -12,6 +12,7 @@ function extract_tarball(
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
     while !eof(tar)
+        # TODO: handle stopping for zero blocks
         hdr = read_header(tar, buf=buf)
         # error checking
         hdr.path == "." && hdr.type != '5' &&
