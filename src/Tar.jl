@@ -1,5 +1,13 @@
 module Tar
 
+# TODO: add some version of this method to Base
+function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
+    n < 0 && throw(ArgumentError("cannot skip backwards when reading from a process"))
+    for _ = 1:n
+        read(io, UInt8)
+    end
+end
+
 include("write.jl")
 include("read.jl")
 
