@@ -239,7 +239,7 @@ function write_standard_header(
     @assert ncodeunits(c) ≤ 6
     seek(h, 148)
     write(h, "$c\0 ")
-    seek(h, 512)
+    @assert position(h) == 156
 
     # write header
     w = write(out, buf)
@@ -248,31 +248,31 @@ function write_standard_header(
 end
 
 function write_data(
-    out::IO,
-    from::IO;
+    tar::IO,
+    file::IO;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
     resize!(buf, 512)
     w = s = 0
-    while !eof(from)
-        s += n = readbytes!(from, buf)
+    while !eof(file)
+        s += n = readbytes!(file, buf)
         n < 512 && (buf[n+1:512] .= 0)
-        w += write(out, buf)
+        w += write(tar, buf)
     end
     s == size ||
         throw(@error("data did not have the expected size",
-            got = s, expected = size, source = from))
+            got = s, expected = size, source = file))
     return w
 end
 
 function write_data(
-    out::IO,
-    from::String;
+    tar::IO,
+    file::String;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
-    open(from) do data
-        write_data(out, data, size=size, buf=buf)
+    open(file) do file′
+        write_data(tar, file′, size=size, buf=buf)
     end
 end
