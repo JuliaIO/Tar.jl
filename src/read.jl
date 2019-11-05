@@ -75,17 +75,17 @@ function check_paths(path::String, link::String)
     # checks for both path and link
     for (x, p) in (("path", path), ("link", link))
         !isempty(p) && p[1] == '/' &&
-            throw(ArgumentError("$x may not be absolute: $(repr(p))"))
+            error("$x is absolute: $(repr(p))")
         occursin("//", p) &&
-            throw(ArgumentError("$x may not have conscutive slashes: $(repr(p))"))
+            error("$x has conscutive slashes: $(repr(p))")
         0x0 in codeunits(p) &&
-            throw(ArgumentError("$x may not contain NUL bytes: $(repr(p))"))
+            error("$x contains NUL bytes: $(repr(p))")
     end
     # checks for path only
     isempty(path) &&
-        throw(ArgumentError("path may not be empty: $(repr(path))"))
+        error("path is empty")
     path != "." && occursin(r"(^|/)\.\.?(/|$)", path) &&
-        throw(ArgumentError("path may not have '.' or '..' components: $(repr(path))"))
+        error("path has '.' or '..' components: $(repr(path))")
     # checks for link only
     if !isempty(link)
         dir = dirname(path)
@@ -94,7 +94,7 @@ function check_paths(path::String, link::String)
         level -= count(r"(^|/)\.(/|$)", fullpath)
         level -= count(r"(^|/)\.\.(/|$)", fullpath) * 2
         level < 0 &&
-            throw(ArgumentError("link may not point above root: $(repr(fullpath))"))
+            throw(@error("link points above root", path=path, link=link))
     end
 end
 
