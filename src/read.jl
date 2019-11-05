@@ -1,9 +1,117 @@
+"""
+The `Header` type is a struct representing the essential metadata for a single
+record in a tar file. It has the following fields:
+
+* `path :: String` — the path of the entry relative to the root
+* `type :: Symbol` — the type of the entry (`:file`, `:directory`, `:link`, etc.)
+* `mode :: UInt16` — the mode of the entry (typically shown in octal)
+* `size :: Int64`  — the size of the entry in bytes
+* `link :: String` — the target path of a symlink (`nothing` for non symlinks)
+
+Types are represented with the following symbols: `file`, `hardlink` `symlink`
+`chardev` `blockdev` `directory` `fifo` `highperf` (see the POSIX [spec]) or for
+unknown types typeflag character as a symbol. Note that [`extract`](@ref) will
+refuse to extract records of types other than `file`, `symlink` or `directory`.
+
+The tar format includes various other metadata about records, including user and
+group IDs, user and group names, and timestamps, but the `Tar` package by design
+completely ignores these. When creating tar files, these fields are always set
+to zero/empty and when reading tar files, these fields are ignored aside from
+verifying header checksums.
+
+[spec]: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html
+"""
+
 struct Header
     path::String
+    type::Symbol
     mode::UInt16
     size::Int64
-    type::Char
     link::String
+end
+
+function Base.show(io::IO, hdr::Header)
+    show(io, Header)
+    print(io, "(")
+    show(io, hdr.path)
+    print(io, ", ")
+    show(io, hdr.type)
+    print(io, ", 0o", string(hdr.mode, base=8, pad=3), ", ")
+    show(io, hdr.size)
+    print(io, ", ")
+    show(io, hdr.link)
+    print(io, ")")
+end
+
+function symbolic_type(type::Char)
+    type == '0'     ? :file      :
+    type == '1'     ? :hardlink  :
+    type == '2'     ? :symlink   :
+    type == '3'     ? :chardev   :
+    type == '4'     ? :blockdev  :
+    type == '5'     ? :directory :
+    type == '6'     ? :fifo      :
+    type == '7'     ? :highperf  : Symbol(type)
+end
+
+function check_header(hdr::Header)
+    hdr.path == "." && hdr.type != :directory &&
+        throw(@error("path '.' not a directory", type=hdr.type))
+    hdr.type in (:file, :directory, :symlink) ||
+        throw(@error("unsupported file type", path=hdr.path, type=hdr.type))
+    hdr.type != :symlink && !isempty(hdr.link) &&
+        throw(@error("non-link with link path", path=hdr.path, link=hdr.link))
+    hdr.type == :symlink && hdr.size != 0 &&
+        throw(@error("symlink with non-zero size", path=hdr.path, size=hdr.size))
+    hdr.type == :directory && hdr.size != 0 &&
+        throw(@error("directory with non-zero size", path=hdr.path, size=hdr.size))
+    hdr.type != :directory && !isempty(hdr.path) && hdr.path[end] == '/' &&
+        throw(@error("non-directory ending with '/'", path=hdr.path, type=hdr.type))
+    check_paths(hdr.path, hdr.link)
+end
+
+# used by check_header and write_header
+function check_paths(path::String, link::String)
+    # checks for both path and link
+    for (x, p) in (("path", path), ("link", link))
+        !isempty(p) && p[1] == '/' &&
+            throw(ArgumentError("$x may not be absolute: $(repr(p))"))
+        occursin("//", p) &&
+            throw(ArgumentError("$x may not have conscutive slashes: $(repr(p))"))
+        0x0 in codeunits(p) &&
+            throw(ArgumentError("$x may not contain NUL bytes: $(repr(p))"))
+    end
+    # checks for path only
+    isempty(path) &&
+        throw(ArgumentError("path may not be empty: $(repr(path))"))
+    path != "." && occursin(r"(^|/)\.\.?(/|$)", path) &&
+        throw(ArgumentError("path may not have '.' or '..' components: $(repr(path))"))
+    # checks for link only
+    if !isempty(link)
+        dir = dirname(path)
+        fullpath = isempty(dir) ? link : "$dir/$link"
+        level = count("/", fullpath) + 1
+        level -= count(r"(^|/)\.(/|$)", fullpath)
+        level -= count(r"(^|/)\.\.(/|$)", fullpath) * 2
+        level < 0 &&
+            throw(ArgumentError("link may not point above root: $(repr(fullpath))"))
+    end
+end
+
+function list_tarball(
+    tar::IO;
+    strict::Bool = true,
+    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+)
+    headers = Header[]
+    while !eof(tar)
+        hdr = read_header(tar, buf=buf)
+        hdr === nothing && break
+        strict && check_header(hdr)
+        push!(headers, hdr)
+        skip(tar, 512 * ((hdr.size + 511) ÷ 512))
+    end
+    return headers
 end
 
 function extract_tarball(
@@ -14,24 +122,11 @@ function extract_tarball(
     while !eof(tar)
         hdr = read_header(tar, buf=buf)
         hdr === nothing && break
-        # error checking
-        hdr.path == "." && hdr.type != '5' &&
-            throw(@error("path '.' not a directory", type=hdr.type))
-        hdr.type in "025" ||
-            throw(@error("unsupported file type", path=hdr.path, type=hdr.type))
-        hdr.type != '2' && !isempty(hdr.link) &&
-            throw(@error("regular file with link path", path=hdr.path, link=hdr.link))
-        hdr.type == '2' && hdr.size != 0 &&
-            throw(@error("link with non-zero size", path=hdr.path, size=hdr.size))
-        hdr.type == '5' && hdr.size != 0 &&
-            throw(@error("directory with non-zero size", path=hdr.path, size=hdr.size))
-        hdr.type != '5' && !isempty(hdr.path) && hdr.path[end] == '/' &&
-            throw(@error("non-directory ending with '/'", path=hdr.path, type=hdr.type))
-        check_paths(hdr.path, hdr.link)
+        check_header(hdr)
         # create the path
         path = hdr.path[end] == '/' ? chop(hdr.path) : hdr.path
         path = joinpath(root, split(path, '/')...)
-        if hdr.type == '5' # directory
+        if hdr.type == :directory
             mkpath(path)
         else
             if ispath(path)
@@ -46,12 +141,13 @@ function extract_tarball(
                     mkpath(dir)
                 end
             end
-            hdr.type == '0' && read_data(tar, path, size=hdr.size)
-            hdr.type == '2' && symlink(hdr.link, path)
+            hdr.type == :file && read_data(tar, path, size=hdr.size)
+            hdr.type == :symlink && symlink(hdr.link, path)
         end
-        if hdr.type != '2'
+        if hdr.type != :symlink
             chmod(path, hdr.mode)
         elseif Sys.isbsd()
+            # BSD system support symlink permissions, so try setting them...
             ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), path, hdr.mode)
             systemerror(:lchmod, ret != 0)
         end
@@ -61,7 +157,7 @@ end
 function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr = read_standard_header(io, buf=buf)
     hdr === nothing && return nothing
-    hdr.type in "xg" || return hdr
+    hdr.type in (:x, :g) || return hdr
     size = path = link = nothing
     metadata = read_extended_metadata(io, hdr.size, buf=buf)
     for (key, value) in metadata
@@ -79,9 +175,8 @@ function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr === nothing && error("premature end of tar file")
     return Header(
         something(path, hdr.path),
-        hdr.mode,
+        hdr.type, hdr.mode,
         something(size, hdr.size),
-        hdr.type,
         something(link, hdr.link),
     )
 end
@@ -162,7 +257,7 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     isascii(type) ||
         error("invalid block type indicator: $(repr(type))")
     path = isempty(prefix) ? name : "$prefix/$name"
-    return Header(path, mode, size, type, link)
+    return Header(path, symbolic_type(type), mode, size, link)
 end
 
 index_range(offset::Int, length::Int) = offset .+ (1:length)

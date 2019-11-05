@@ -3,7 +3,7 @@ module Tar
 include("write.jl")
 include("read.jl")
 
-## official API: create, extract
+## official API: create, list, extract
 
 """
     create([ predicate, ] dir, [ tarball, ]) -> tarball
@@ -48,6 +48,31 @@ create(dir::AbstractString, tarball::Union{AbstractString, IO}) =
 create(dir::AbstractString) = create(p->true, dir)
 
 """
+    list(tarball; [ strict = true ]) -> Vector{Header}
+
+        tarball   :: Union{AbstractString, IO}
+        strict    :: Bool
+
+List the contents of a tar archive ("tarball") located at the path `tarball`.
+If `tarball` is an IO handle, read the tar contents from that stream. Returns
+a vector of `Header` structs. See [`Header`](@ref) for details.
+
+By default `list` will error if it encounters any tarball contents which the
+`extract` function would not be able to extract. With `strict=false`, it will
+skip these checks and list the contents of tar files that `extract` would refuse
+to extract. These tar files may be extractable with other programs.
+"""
+
+function list(tarball::AbstractString; strict::Bool=true)
+    list_tarball_check(tarball)
+    open(tarball) do io
+        list_tarball(io, strict=strict)
+    end
+end
+
+list(tarball::IO; strict::Bool=true) = list_tarball(tarball, strict=strict)
+
+"""
     extract(tarball, [ dir, ]; [ force=false ]) -> dir
 
         tarball   :: Union{AbstractString, IO}
@@ -73,7 +98,7 @@ end
 
 function extract(tarball::IO, dir::AbstractString = mktempdir(); force::Bool=false)
     extract_dir_check(dir, force=force)
-    extract_tarball(io, dir)
+    extract_tarball(tarball, dir)
     return dir
 end
 
@@ -81,6 +106,9 @@ end
 
 create_dir_check(dir::AbstractString) = isdir(dir) ||
         error("not a directory: $dir\nUSAGE: create([predicate,] dir, [tarball])")
+
+list_tarball_check(tarball::AbstractString) = isfile(tarball) ||
+    error("not a file: $tarball\nUSAGE: list(tarball)")
 
 extract_tarball_check(tarball::AbstractString) = isfile(tarball) ||
     error("not a file: $tarball\nUSAGE: extract(tarball, [dir])")

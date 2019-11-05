@@ -50,10 +50,11 @@ function make_test_tarball()
     return tarball, hash
 end
 
-@testset "create & extract tarball of empty tree" begin
+@testset "empty tarball" begin
     dir = mktempdir()
     tarball = Tar.create(dir)
     rm(dir, force=true, recursive=true)
+    @test Tar.list(tarball) == [Tar.Header(".", :directory, 0o755, 0, "")]
     dir = Tar.extract(tarball)
     @test isempty(readdir(dir))
     rm(dir, force=true, recursive=true)
@@ -65,12 +66,32 @@ end
     rm(dir, force=true, recursive=true)
 end
 
-# TODO: test that each kind of file gets the right path
-# e.g. that dir ends with /; file and link don't
-
-@testset "git tree hash equality" begin
+@testset "test tarball" begin
     tarball, hash = make_test_tarball()
-    @testset "external tar" begin
+    @testset "Tar.list & check properties" begin
+        headers = Tar.list(tarball)
+        for hdr in headers
+            @test !isempty(hdr.path)
+            @test hdr.type in (:file, :directory, :symlink)
+            if hdr.type == :file
+                @test hdr.path[end] != '/'
+                @test hdr.mode in (0o644, 0o755)
+                @test isempty(hdr.link)
+            elseif hdr.type == :directory
+                @test hdr.path[end] == '/'
+                @test hdr.mode == 0o755
+                @test hdr.size == 0
+                @test isempty(hdr.link)
+            elseif hdr.type == :symlink
+                @test hdr.path[end] != '/'
+                @test hdr.mode == 0o755
+                @test hdr.size == 0
+                @test !isempty(hdr.link)
+            end
+        end
+        @test issorted(headers, by = hdr -> hdr.path)
+    end
+    @testset "extract with `tar` command" begin
         root = mktempdir()
         run(`tar -C $root -xf $tarball`)
         @test tree_hash(root) == hash

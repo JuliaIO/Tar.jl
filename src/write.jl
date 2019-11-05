@@ -109,33 +109,6 @@ function write_header(
     )
 end
 
-function check_paths(path::String, link::String)
-    # checks for both path and link
-    for (x, p) in (("path", path), ("link", link))
-        !isempty(p) && p[1] == '/' &&
-            throw(ArgumentError("$x may not be absolute: $(repr(p))"))
-        occursin("//", p) &&
-            throw(ArgumentError("$x may not have conscutive slashes: $(repr(p))"))
-        0x0 in codeunits(p) &&
-            throw(ArgumentError("$x may not contain NUL bytes: $(repr(p))"))
-    end
-    # checks for path only
-    isempty(path) &&
-        throw(ArgumentError("path may not be empty: $(repr(path))"))
-    path != "." && occursin(r"(^|/)\.\.?(/|$)", path) &&
-        throw(ArgumentError("path may not have '.' or '..' components: $(repr(path))"))
-    # checks for link only
-    if !isempty(link)
-        dir = dirname(path)
-        fullpath = isempty(dir) ? link : "$dir/$link"
-        level = count("/", fullpath) + 1
-        level -= count(r"(^|/)\.(/|$)", fullpath)
-        level -= count(r"(^|/)\.\.(/|$)", fullpath) * 2
-        level < 0 &&
-            throw(ArgumentError("link may not point above root: $(repr(fullpath))"))
-    end
-end
-
 function write_extended_header(
     out::IO,
     metadata::Vector{Pair{String,String}};
