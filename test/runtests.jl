@@ -66,10 +66,16 @@ end
     rm(dir, force=true, recursive=true)
 end
 
+function check_tree_hash(hash::Vector{UInt8}, root::AbstractString)
+    @test tree_hash(root) == hash
+    rm(root, force=true, recursive=true)
+end
+
 @testset "test tarball" begin
     tarball, hash = make_test_tarball()
     @testset "Tar.list & check properties" begin
         headers = Tar.list(tarball)
+        @test issorted(headers, by = hdr -> hdr.path)
         for hdr in headers
             @test !isempty(hdr.path)
             @test hdr.type in (:file, :directory, :symlink)
@@ -89,26 +95,35 @@ end
                 @test !isempty(hdr.link)
             end
         end
-        @test issorted(headers, by = hdr -> hdr.path)
+        @testset "Tar.list from IO, process, pipeline" begin
+            @test headers == open(Tar.list, tarball)
+            @test headers == open(Tar.list, `cat $tarball`)
+            @test headers == open(Tar.list, pipeline(`bzip2 -c -9 $tarball`, `bzcat`))
+        end
     end
     @testset "extract with `tar` command" begin
         root = mktempdir()
         run(`tar -C $root -xf $tarball`)
-        @test tree_hash(root) == hash
-        rm(root, force=true, recursive=true)
+        check_tree_hash(hash, root)
     end
     @testset "Tar.extract" begin
         root = Tar.extract(tarball)
-        @test tree_hash(root) == hash
-        rm(root, force=true, recursive=true)
+        check_tree_hash(hash, root)
+    end
+    @testset "Tar.extract from IO, process, pipeline" begin
+        root = open(Tar.extract, tarball)
+        check_tree_hash(hash, root)
+        root = open(Tar.extract, `cat $tarball`)
+        check_tree_hash(hash, root)
+        root = open(Tar.extract, pipeline(`bzip2 -c -9 $tarball`, `bzcat`))
+        check_tree_hash(hash, root)
     end
     open(tarball, append=true) do io
         write(io, zeros(UInt8, 512))
     end
     @testset "Tar.extract with trailing zeros" begin
         root = Tar.extract(tarball)
-        @test tree_hash(root) == hash
-        rm(root, force=true, recursive=true)
+        check_tree_hash(hash, root)
     end
     rm(tarball, force=true)
 end
