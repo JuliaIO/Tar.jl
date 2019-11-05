@@ -1,4 +1,4 @@
-function write_tar(
+function write_tarball(
     predicate::Function,
     out::IO,
     sys_path::String,      # path in the filesystem
@@ -39,18 +39,18 @@ function write_tar(
         size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
     end
     for (name, path) in sort!(files)
-        w += write_tar(predicate, out, path, tar_path * name)
+        w += write_tarball(predicate, out, path, tar_path * name)
     end
     return w
 end
 
-function write_tar(
+function write_tarball(
     out::IO,
     sys_path::String,
     tar_path::String = "";
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
-    write_tar(p->true, out, sys_path, tar_path, buf=buf)
+    write_tarball(p->true, out, sys_path, tar_path, buf=buf)
 end
 
 function write_header(

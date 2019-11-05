@@ -22,7 +22,7 @@ function create(predicate::Function, dir::AbstractString, tarball::AbstractStrin
     isdir(dir) ||
         error("not a directory: $dir\nUSAGE: create([predicate,] dir, [tarball])")
     open(tarball, write=true) do out
-        write_tar(predicate, out, dir)
+        write_tarball(predicate, out, dir)
     end
     return tarball
 end
@@ -31,7 +31,7 @@ function create(predicate::Function, dir::AbstractString)
     isdir(dir) ||
         error("not a directory: $dir\nUSAGE: create([predicate,] dir, [tarball])")
     tarball, out = mktemp()
-    write_tar(predicate, out, dir)
+    write_tarball(predicate, out, dir)
     close(out)
     return tarball
 end
@@ -59,7 +59,7 @@ function extract(tarball::AbstractString, dir::AbstractString = mktempdir())
         error("not a directory: $dir\nUSAGE: extract(tarball, [dir])")
     isdir(dir) || mkdir(dir)
     open(tarball) do io
-        extract_tar(io, dir)
+        extract_tarball(io, dir)
     end
     return dir
 end

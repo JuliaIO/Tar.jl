@@ -6,7 +6,7 @@ struct Header
     link::String
 end
 
-function extract_tar(
+function extract_tarball(
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
