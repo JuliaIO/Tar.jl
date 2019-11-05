@@ -27,7 +27,7 @@ function write_tar(
         for name in readdir(sys_path, sort = false)
             path = joinpath(sys_path, name)
             predicate(path) || continue
-            isdir(path) && (name = "$name/")
+            isdir(lstat(path)) && (name = "$name/")
             push!(files, (name, path))
         end
     else
