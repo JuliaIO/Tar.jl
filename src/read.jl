@@ -6,6 +6,57 @@ struct Header
     link::String
 end
 
+function extract_tar(
+    tar::IO,
+    root::String;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+)
+    while !eof(tar)
+        hdr = read_header(tar, buf=buf)
+        # error checking
+        hdr.path == "." && hdr.type != '5' &&
+            throw(@error("path '.' not a directory", type=hdr.type))
+        hdr.type in "025" ||
+            throw(@error("unsupported file type", path=hdr.path, type=hdr.type))
+        hdr.type != '2' && !isempty(hdr.link) &&
+            throw(@error("regular file with link path", path=hdr.path, link=hdr.link))
+        hdr.type == '2' && hdr.size != 0 &&
+            throw(@error("link with non-zero size", path=hdr.path, size=hdr.size))
+        hdr.type == '5' && hdr.size != 0 &&
+            throw(@error("directory with non-zero size", path=hdr.path, size=hdr.size))
+        hdr.type != '5' && !isempty(hdr.path) && hdr.path[end] == '/' &&
+            throw(@error("non-directory ending with '/'", path=hdr.path, type=hdr.type))
+        check_paths(hdr.path, hdr.link)
+        # create the path
+        path = hdr.path[end] == '/' ? chop(hdr.path) : hdr.path
+        path = joinpath(root, split(path, '/')...)
+        if hdr.type == '5' # directory
+            mkpath(path)
+        else
+            if ispath(path)
+                # delete and replace path
+                rm(path, force=true, recursive=true)
+            else
+                dir = dirname(path)
+                # ensure `dir` is a directory
+                st = stat(dir)
+                if !isdir(st)
+                    ispath(st) && rm(dir, force=true, recursive=true)
+                    mkpath(dir)
+                end
+            end
+            hdr.type == '0' && read_data(tar, path, size=hdr.size)
+            hdr.type == '2' && symlink(hdr.link, path)
+        end
+        if hdr.type != '2'
+            chmod(path, hdr.mode)
+        elseif Sys.isbsd()
+            ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), path, hdr.mode)
+            systemerror(:lchmod, ret != 0)
+        end
+    end
+end
+
 function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr = read_standard_header(io, buf=buf)
     hdr.type in "xg" || return hdr
@@ -81,7 +132,7 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     resize!(buf, 512)
     read!(io, buf)
     n = length(buf)
-    n == 0 && error("premature end of tarball")
+    n == 0 && error("premature end of tar file")
     n < 512 && error("incomplete trailing block with length $n < 512")
     @assert n == 512
     name    = read_header_str(buf, 0, 100)
@@ -99,7 +150,7 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     buf[index_range(148, 8)] .= ' ' # fill checksum field with spaces
     buf_sum = sum(buf)
     chksum == buf_sum ||
-        error("incorrect checksum $chksum for block; should be $buf_sum")
+        error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(buf)))")
     magic == "ustar" ||
         error("unknown magic string for tar file: $(repr(magic))")
     version == "00" ||
@@ -143,4 +194,33 @@ function read_header_bin(buf::Vector{UInt8}, offset::Int, length::Int)
         n |= buf[i]
     end
     return n
+end
+
+function read_data(
+    tar::IO,
+    file::IO;
+    size::Integer,
+    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+)
+    resize!(buf, 512)
+    while size > 0
+        r = readbytes!(tar, buf)
+        r < 512 && eof(io) && error("premature end of tar file")
+        size < 512 && resize!(buf, size)
+        size -= write(file, buf)
+    end
+    resize!(buf, 512)
+    @assert size == 0
+    return
+end
+
+function read_data(
+    tar::IO,
+    file::String;
+    size::Integer,
+    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+)
+    open(file, write=true) do file′
+        read_data(tar, file′, size=size, buf=buf)
+    end
 end

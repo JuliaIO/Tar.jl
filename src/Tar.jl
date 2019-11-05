@@ -58,7 +58,9 @@ function extract(tarball::AbstractString, dir::AbstractString = mktempdir())
     ispath(dir) && !isdir(dir) &&
         error("not a directory: $dir\nUSAGE: extract(tarball, [dir])")
     isdir(dir) || mkdir(dir)
-    # core call to extract tarball into dir here
+    open(tarball) do io
+        extract_tar(io, dir)
+    end
     return dir
 end
 
