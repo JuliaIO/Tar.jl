@@ -35,7 +35,9 @@ function write_tarball(
     end
     if isempty(files) # non-empty directories are implicit
         path = isempty(tar_path) ? "." : tar_path
-        w += write_header(out, path, size=size, type=type, mode=mode, link=link, buf=buf)
+        hdr = Header(path, to_symbolic_type(type), mode, size, link)
+        check_header(hdr)
+        w += write_header(out, hdr, buf=buf)
         size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
     end
     for (name, path) in sort!(files)
@@ -55,21 +57,15 @@ end
 
 function write_header(
     out::IO,
-    path::AbstractString;
-    size::Integer,
-    type::Char = '0',
-    mode::Integer = 0o644,
-    link::AbstractString = "",
+    hdr::Header;
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
-    path = String(path)
-    link = String(link)
-
-    # error checking
-    size < 0 && throw(ArgumentError("negative file size is invalid: $size"))
-    path == "." && type != '5' &&
-        throw(ArgumentError("path '.' must be a directory; got type $(repr(type))"))
-    check_paths(path, link)
+    # extract values
+    path = hdr.path
+    type = from_symbolic_type(hdr.type)
+    mode = hdr.mode
+    size = hdr.size
+    link = hdr.link
 
     # determine if an extended header is needed
     extended = Pair{String,String}[]
@@ -118,13 +114,13 @@ function write_extended_header(
     type in "xg" ||
         throw(ArgumentError("invalid type flag for extended header: $(repr(type))"))
     d = IOBuffer()
-    for (key, value) in metadata
+    for (key, val) in metadata
         isvalid(key) ||
             throw(ArgumentError("extended header key not valid UTF-8: $(repr(key))"))
-        isvalid(value) ||
-            throw(ArgumentError("extended header value not valid UTF-8: $(repr(value))"))
+        isvalid(val) ||
+            throw(ArgumentError("extended header value not valid UTF-8: $(repr(val))"))
         # generate key-value entry
-        entry = " $key=$value\n"
+        entry = " $key=$val\n"
         n = l = ncodeunits(entry)
         while n < l + ndigits(n)
             n = l + ndigits(n)

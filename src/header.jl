@@ -58,6 +58,8 @@ function to_symbolic_type(type::Char)
     for (t, s) in TYPE_SYMBOLS
         type == t && return s
     end
+    isascii(type) ||
+        error("invalid type flag: $(repr(type))")
     return Symbol(type)
 end
 
@@ -84,6 +86,9 @@ function check_header(hdr::Header)
         throw(@error("directory with non-zero size", path=hdr.path, size=hdr.size))
     hdr.type != :directory && !isempty(hdr.path) && hdr.path[end] == '/' &&
         throw(@error("non-directory ending with '/'", path=hdr.path, type=hdr.type))
+    hdr.size < 0 &&
+        throw(@error("negative file size", path=hdr.path, size=hdr.size))
+    # TODO: check mode
     check_paths(hdr.path, hdr.link)
 end
 
