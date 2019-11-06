@@ -43,14 +43,32 @@ function Base.show(io::IO, hdr::Header)
     print(io, ")")
 end
 
-function symbolic_type(type::Char)
-    type == '0'     ? :file      :
-    type == '1'     ? :hardlink  :
-    type == '2'     ? :symlink   :
-    type == '3'     ? :chardev   :
-    type == '4'     ? :blockdev  :
-    type == '5'     ? :directory :
-    type == '6'     ? :fifo      : Symbol(type)
+const TYPE_SYMBOLS = (
+    '0'  => :file,
+    '\0' => :file, # legacy encoding
+    '1'  => :hardlink,
+    '2'  => :symlink,
+    '3'  => :chardev,
+    '4'  => :blockdev,
+    '5'  => :directory,
+    '6'  => :fifo,
+)
+
+function to_symbolic_type(type::Char)
+    for (t, s) in TYPE_SYMBOLS
+        type == t && return s
+    end
+    return Symbol(type)
+end
+
+function from_symbolic_type(sym::Symbol)
+    for (t, s) in TYPE_SYMBOLS
+        sym == s && return t
+    end
+    str = String(sym)
+    ncodeunits(str) == 1 && isascii(str[1]) ||
+        throw(ArgumentError("invalid type symbol: $(repr(sym))"))
+    return str[1]
 end
 
 function check_header(hdr::Header)

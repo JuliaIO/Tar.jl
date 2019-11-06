@@ -157,7 +157,7 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     isascii(type) ||
         error("invalid block type indicator: $(repr(type))")
     path = isempty(prefix) ? name : "$prefix/$name"
-    return Header(path, symbolic_type(type), mode, size, link)
+    return Header(path, to_symbolic_type(type), mode, size, link)
 end
 
 index_range(offset::Int, length::Int) = offset .+ (1:length)
