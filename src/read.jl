@@ -11,7 +11,7 @@ record in a tar file with this definition:
     end
 
 Types are represented with the following symbols: `file`, `hardlink`, `symlink`,
-`chardev`, `blockdev`, `directory`, `fifo`, or for unkonwn types, the typeflag
+`chardev`, `blockdev`, `directory`, `fifo`, or for unknown types, the typeflag
 character as a symbol. Note that [`extract`](@ref) refuses to extract records
 types other than `file`, `symlink` and `directory`; [`list`](@ref) will only
 list other kinds of records if called with `strict=false`.
@@ -249,9 +249,9 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     buf_sum = sum(buf)
     chksum == buf_sum ||
         error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(buf)))")
-    magic == "ustar" ||
+    occursin(r"^ustar\s*$", magic) ||
         error("unknown magic string for tar file: $(repr(magic))")
-    version == "00" ||
+    occursin(r"^0* *$", version) ||
         error("unkonwn version string for tar file: $(repr(version))")
     isascii(type) ||
         error("invalid block type indicator: $(repr(type))")
