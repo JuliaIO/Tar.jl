@@ -74,48 +74,45 @@ function from_symbolic_type(sym::Symbol)
 end
 
 function check_header(hdr::Header)
-    hdr.path == "." && hdr.type != :directory &&
-        throw(@error("path '.' not a directory", type=hdr.type))
-    hdr.type in (:file, :directory, :symlink) ||
-        throw(@error("unsupported file type", path=hdr.path, type=hdr.type))
-    hdr.type != :symlink && !isempty(hdr.link) &&
-        throw(@error("non-link with link path", path=hdr.path, link=hdr.link))
-    hdr.type == :symlink && hdr.size != 0 &&
-        throw(@error("symlink with non-zero size", path=hdr.path, size=hdr.size))
-    hdr.type == :directory && hdr.size != 0 &&
-        throw(@error("directory with non-zero size", path=hdr.path, size=hdr.size))
-    hdr.type != :directory && !isempty(hdr.path) && hdr.path[end] == '/' &&
-        throw(@error("non-directory ending with '/'", path=hdr.path, type=hdr.type))
-    hdr.size < 0 &&
-        throw(@error("negative file size", path=hdr.path, size=hdr.size))
-    # TODO: check mode
-    check_paths(hdr.path, hdr.link)
-end
+    errors = String[]
+    err(e::String) = push!(errors, e)
 
-# used by check_header and write_header
-function check_paths(path::String, link::String)
-    # checks for both path and link
-    for (x, p) in (("path", path), ("link", link))
-        !isempty(p) && p[1] == '/' &&
-            error("$x is absolute: $(repr(p))")
-        occursin("//", p) &&
-            error("$x has conscutive slashes: $(repr(p))")
-        0x0 in codeunits(p) &&
-            error("$x contains NUL bytes: $(repr(p))")
+    # error checks
+    isempty(hdr.path) &&
+        err("path is empty")
+    0x0 in codeunits(hdr.path) &&
+        err("path contains NUL bytes")
+    0x0 in codeunits(hdr.link) &&
+        err("link contains NUL bytes")
+    !isempty(hdr.path) && hdr.path[1] == '/' &&
+        err("path is absolute")
+    occursin(r"(^|/)\.\.(/|$)", hdr.path) &&
+        err("path contains '..' component")
+    hdr.type in (:file, :symlink, :directory) ||
+        err("unsupported file type")
+    hdr.type ∉ (:hardlink, :symlink) && !isempty(hdr.link) &&
+        err("non-link with link path")
+    hdr.type == :symlink && hdr.size != 0 &&
+        err("symlink with non-zero size")
+    hdr.type == :directory && hdr.size != 0 &&
+        err("directory with non-zero size")
+    hdr.type != :directory && endswith(hdr.path, "/") &&
+       err("non-directory path ending with '/'")
+    hdr.type != :directory && (hdr.path == "." || endswith(hdr.path, "/.")) &&
+       err("non-directory path ending with '.' component")
+    hdr.size < 0 &&
+       err("negative file size")
+    isempty(errors) && return
+
+    # contruct error message
+    if length(errors) == 1
+        msg = errors[1] * "\n"
+    else
+        msg = "tar header with multiple errors:\n"
+        for e in sort!(errors)
+            msg *= " * $e\n"
+        end
     end
-    # checks for path only
-    isempty(path) &&
-        error("path is empty")
-    path != "." && occursin(r"(^|/)\.\.?(/|$)", path) &&
-        error("path has '.' or '..' components: $(repr(path))")
-    # checks for link only
-    if !isempty(link)
-        dir = dirname(path)
-        fullpath = isempty(dir) ? link : "$dir/$link"
-        level = count("/", fullpath) + 1
-        level -= count(r"(^|/)\.(/|$)", fullpath)
-        level -= count(r"(^|/)\.\.(/|$)", fullpath) * 2
-        level < 0 &&
-            throw(@error("link points above root", path=path, link=link))
-    end
+    msg *= repr(hdr)
+    error(msg)
 end

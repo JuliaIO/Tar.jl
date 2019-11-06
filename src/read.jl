@@ -19,13 +19,23 @@ function extract_tarball(
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
+    real_root = realpath(root)
     while !eof(tar)
         hdr = read_header(tar, buf=buf)
         hdr === nothing && break
         check_header(hdr)
-        # create the path
+        # convert tarball path to real path
         path = hdr.path[end] == '/' ? chop(hdr.path) : hdr.path
         path = joinpath(root, split(path, '/')...)
+        # check that file to be written is not external to root via symlinks
+        let prefix = path
+            while !ispath(prefix)
+                prefix = dirname(prefix)
+            end
+            startswith(realpath(prefix), real_root) ||
+                error("refusing to extract outside of root (possible symlink attack)")
+        end
+        # create the path
         if hdr.type == :directory
             mkpath(path)
         else

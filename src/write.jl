@@ -224,9 +224,12 @@ function write_data(
         n < 512 && (buf[n+1:512] .= 0)
         w += write(tar, buf)
     end
-    s == size ||
-        throw(@error("data did not have the expected size",
-            got = s, expected = size, source = file))
+    s == size || error("""
+    data did not have the expected size:
+     - got: $s
+     - expected: $size
+    while extracting tar data from $file.
+    """)
     return w
 end
 
