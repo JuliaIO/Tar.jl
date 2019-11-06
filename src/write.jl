@@ -62,8 +62,6 @@ function write_header(
 )
     # extract values
     path = hdr.path
-    type = from_symbolic_type(hdr.type)
-    mode = hdr.mode
     size = hdr.size
     link = hdr.link
 
@@ -96,22 +94,21 @@ function write_header(
     # emit extended header if necessary
     w = 0
     if !isempty(extended)
+        @assert issorted(extended)
         w += write_extended_header(out, extended, buf=buf)
     end
     # emit standard header
-    w += write_standard_header(
-        out, name=name, prefix=prefix, size=size,
-        type=type, mode=mode, link=link, buf=buf,
-    )
+    std_hdr = Header(hdr.path, hdr.type, hdr.mode, hdr.size, hdr.link)
+    w += write_standard_header(out, std_hdr, name=name, prefix=prefix, buf=buf)
 end
 
 function write_extended_header(
     out::IO,
     metadata::Vector{Pair{String,String}};
-    type::Char = 'x',
+    type::Symbol = :x, # default: non-global extended header
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
-    type in "xg" ||
+    type in (:x, :g) ||
         throw(ArgumentError("invalid type flag for extended header: $(repr(type))"))
     d = IOBuffer()
     for (key, val) in metadata
@@ -128,43 +125,41 @@ function write_extended_header(
         @assert n == l + ndigits(n)
         write(d, "$n$entry")
     end
-    n = position(d)
-    w = write_standard_header(out, size=n, type=type, buf=buf)
-    w += write_data(out, seekstart(d), size=n, buf=buf)
+    hdr = Header("", type, 0o000, position(d), "")
+    w = write_standard_header(out, hdr, buf=buf)
+    w += write_data(out, seekstart(d), size=hdr.size, buf=buf)
 end
 
 function write_standard_header(
-    out::IO;
+    out::IO,
+    hdr::Header;
     name::AbstractString = "",
     prefix::AbstractString = "",
-    size::Integer = 0,
-    type::Char = '0',
-    mode::Integer = 0o000,
-    link::AbstractString = "",
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
     name = String(name)
     prefix = String(prefix)
-    link = String(link)
+    type = from_symbolic_type(hdr.type)
+    link = hdr.link
 
     # octal strings for size and mode
-    s = string(size, base=8, pad=11) :: String
-    m = string(mode, base=8, pad=6) :: String
+    m = string(hdr.mode, base=8, pad=6)
+    s = string(hdr.size, base=8, pad=11)
 
     # error checking (presumes checks done by write_header)
-    size < 0 &&
-        throw(ArgumentError("negative file size is invalid: $size"))
+    hdr.size < 0 &&
+        throw(ArgumentError("negative file size is invalid: $(hdr.size)"))
     ncodeunits(prefix) ≤ 155 ||
         throw(ArgumentError("path prefix too long for standard header: $(repr(prefix))"))
     ncodeunits(name) ≤ 100 ||
         throw(ArgumentError("path name too long for standard header: $(repr(name))"))
     ncodeunits(link) ≤ 100 ||
         throw(ArgumentError("symlink target too long for standard header: $(repr(link))"))
+    ncodeunits(m) ≤ 6 ||
+        throw(ArgumentError("mode too large for standard header: 0o$m"))
     ncodeunits(s) ≤ 12 ||
         isempty(name) && isempty(prefix) || # after extended header, large size ok
         throw(ArgumentError("size too large for standard header: $size (0o$s)"))
-    ncodeunits(m) ≤ 6 ||
-        throw(ArgumentError("mode too large for standard header: 0o$m"))
     isascii(type) ||
         throw(ArgumentError("non-ASCII type flag value: $(repr(type))"))
 
@@ -204,7 +199,7 @@ function write_standard_header(
     write(h, prefix)            # prefix
 
     # fix the checksum
-    c = string(sum(buf), base=8, pad=6) :: String
+    c = string(sum(buf), base=8, pad=6)
     @assert ncodeunits(c) ≤ 6
     seek(h, 148)
     write(h, "$c\0 ")
