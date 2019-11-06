@@ -23,12 +23,12 @@ include("read.jl")
 Create a tar archive ("tarball") of the directory `dir`. The resulting archive
 is written to the path `tarball` or if no path is specified, a temporary path is
 created and returned by the function call. If `tarball` is an IO object then the
-tarball content is written to that IO handle instead (the IO handle is not
-closed afterwards). If a `predicate` function is passed, it is called on each
-system path that is encountered while recursively searching `dir` and if
-`predicate(path)` returns `false` the path is excluded from the archive.
-"""
+tarball content is written to that handle instead (the handle is left open).
 
+If a `predicate` function is passed, it is called on each system path that is
+encountered while recursively searching `dir` and `path` is only included in the
+tarball if `predicate(path)` is true.
+"""
 function create(predicate::Function, dir::AbstractString, tarball::AbstractString)
     create_dir_check(dir)
     open(tarball, write=true) do out
@@ -66,11 +66,11 @@ If `tarball` is an IO handle, read the tar contents from that stream. Returns
 a vector of `Header` structs. See [`Header`](@ref) for details.
 
 By default `list` will error if it encounters any tarball contents which the
-`extract` function would not be able to extract. With `strict=false`, it will
-skip these checks and list the contents of tar files that `extract` would refuse
-to extract. These tar files may be extractable with other programs.
+`extract` function would refuse to extract. With `strict=false` it will skip
+these checks and list all the the contents of the tar file whether `extract`
+would extract them or not. Beware that malicious tarballs can do all sorts of
+crafty and unexpected things to try to trick you into doing something bad.
 """
-
 function list(tarball::AbstractString; strict::Bool=true)
     list_tarball_check(tarball)
     open(tarball) do io
@@ -90,11 +90,12 @@ list(tarball::IO; strict::Bool=true) = list_tarball(tarball, strict=strict)
 Extract a tar archive ("tarball") located at the path `tarball` into the
 directory `dir`. If `tarball` is an IO object instead of a path, then the
 archive contents will be read from that IO stream. The archive is extracted to
-`dir` which must either be an existing writeable directory or which can be
-created. If `dir` is not specified, the archive is extracted into a temporary
-directory, which is returned by the `extract` function call.
+`dir` which must either be an existing writeable directory or a path which can
+be created as a directory with `mkdir`. By default, `extract` will refuse to
+extract into a non-empty directory, but the `force=true` option allows this. If
+`dir` is not specified, the archive is extracted into a temporary directory
+which is returned by the `extract` function call.
 """
-
 function extract(tarball::AbstractString, dir::AbstractString=mktempdir(); force::Bool=false)
     extract_tarball_check(tarball)
     extract_dir_check(dir, force=force)

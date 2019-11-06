@@ -1,27 +1,27 @@
 """
 The `Header` type is a struct representing the essential metadata for a single
-record in a tar file. It has the following fields:
+record in a tar file with this definition:
 
-* `path :: String` — the path of the entry relative to the root
-* `type :: Symbol` — the type of the entry (`:file`, `:directory`, `:link`, etc.)
-* `mode :: UInt16` — the mode of the entry (typically shown in octal)
-* `size :: Int64`  — the size of the entry in bytes
-* `link :: String` — the target path of a symlink (`nothing` for non symlinks)
+    struct Header
+        path :: String # path relative to the root
+        type :: Symbol # type indicator (see below)
+        mode :: UInt16 # mode/permissions (best viewed in octal)
+        size :: Int64  # size of record data in bytes
+        link :: String # target path of a symlink
+    end
 
-Types are represented with the following symbols: `file`, `hardlink` `symlink`
-`chardev` `blockdev` `directory` `fifo` `highperf` (see the POSIX [spec]) or for
-unknown types typeflag character as a symbol. Note that [`extract`](@ref) will
-refuse to extract records of types other than `file`, `symlink` or `directory`.
+Types are represented with the following symbols: `file`, `hardlink`, `symlink`,
+`chardev`, `blockdev`, `directory`, `fifo`, or for unkonwn types, the typeflag
+character as a symbol. Note that [`extract`](@ref) refuses to extract records
+types other than `file`, `symlink` and `directory`; [`list`](@ref) will only
+list other kinds of records if called with `strict=false`.
 
 The tar format includes various other metadata about records, including user and
-group IDs, user and group names, and timestamps, but the `Tar` package by design
+group IDs, user and group names, and timestamps. The `Tar` package, by design,
 completely ignores these. When creating tar files, these fields are always set
-to zero/empty and when reading tar files, these fields are ignored aside from
-verifying header checksums.
-
-[spec]: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html
+to zero/empty. When reading tar files, these fields are ignored aside from
+verifying header checksums for each header record for all fields.
 """
-
 struct Header
     path::String
     type::Symbol
@@ -50,8 +50,7 @@ function symbolic_type(type::Char)
     type == '3'     ? :chardev   :
     type == '4'     ? :blockdev  :
     type == '5'     ? :directory :
-    type == '6'     ? :fifo      :
-    type == '7'     ? :highperf  : Symbol(type)
+    type == '6'     ? :fifo      : Symbol(type)
 end
 
 function check_header(hdr::Header)
