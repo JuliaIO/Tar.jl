@@ -166,3 +166,21 @@ end
     @test_throws ErrorException Tar.extract(tarball)
     rm(tarball)
 end
+
+@testset "symlink overwrite" begin
+    # allowable and should work
+    tarball₁, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :symlink, 0o755, 0, "/tmp"))
+    Tar.write_header(io, Tar.Header("file", :file, 0o644, 0, ""))
+    close(io)
+    tree₁ = Tar.extract(tarball₁)
+    tarball₂, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :file, 0o644, 0, ""))
+    close(io)
+    tree₂ = Tar.extract(tarball₂)
+    @test tree_hash(tree₁) == tree_hash(tree₂)
+    rm(tree₁, recursive=true)
+    rm(tree₂, recursive=true)
+    rm(tarball₁)
+    rm(tarball₂)
+end

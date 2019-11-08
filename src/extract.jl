@@ -24,17 +24,17 @@ function extract_tarball(
         hdr = read_header(tar, buf=buf)
         hdr === nothing && break
         check_header(hdr)
-        # normalize and check path
+        # normalize path and check for symlink attacks
         path = ""
         parts = String[]
         for part in split(hdr.path, '/')
             (isempty(part) || part == ".") && continue
-            path = isempty(path) ? part : "$path/$part"
             path in links && error("""
             refusing to extract path with symlink prefix, possible attack
              * symlink prefix: $(repr(path))
              * path: $(repr(hdr.path))
             """)
+            path = isempty(path) ? part : "$path/$part"
             push!(parts, part)
         end
         if hdr.type == :symlink
