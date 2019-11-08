@@ -32,8 +32,12 @@ tarball if `predicate(path)` is true.
 """
 function create(predicate::Function, dir::AbstractString, tarball::AbstractString)
     create_dir_check(dir)
-    open(tarball, write=true) do out
-        write_tarball(predicate, out, dir)
+    try open(tarball, write=true) do out
+            write_tarball(predicate, out, dir)
+        end
+    catch
+        rm(tarball, force=true)
+        rethrow()
     end
     return tarball
 end
@@ -47,8 +51,13 @@ end
 function create(predicate::Function, dir::AbstractString)
     create_dir_check(dir)
     tarball, out = mktemp()
-    write_tarball(predicate, out, dir)
-    close(out)
+    try write_tarball(predicate, out, dir)
+    catch
+        rm(tarball, force=true)
+        rethrow()
+    finally
+        close(out)
+    end
     return tarball
 end
 
@@ -97,25 +106,39 @@ extract into a non-empty directory, but the `force=true` option allows this. If
 `dir` is not specified, the archive is extracted into a temporary directory
 which is returned by the `extract` function call.
 """
-function extract(tarball::AbstractString, dir::AbstractString=mktempdir(); force::Bool=false)
-    extract_tarball_check(tarball)
-    extract_dir_check(dir, force=force)
-    open(tarball) do io
-        extract_tarball(io, dir)
+function extract(
+    tarball::Union{AbstractString, IO},
+    dir::Union{AbstractString,Nothing} = nothing;
+    force::Bool = false,
+)
+    if tarball isa AbstractString
+        extract_tarball_check(tarball)
     end
-    return dir
-end
-
-function extract(tarball::IO, dir::AbstractString = mktempdir(); force::Bool=false)
-    extract_dir_check(dir, force=force)
-    extract_tarball(tarball, dir)
+    if dir !== nothing
+        extract_dir_check(dir, force=force)
+        cleanup = !ispath(dir)
+    else
+        dir = mktempdir()
+        cleanup = true
+    end
+    try if tarball isa IO
+            extract_tarball(tarball, dir)
+        else
+            open(tarball) do io
+                extract_tarball(io, dir)
+            end
+        end
+    catch
+        cleanup && rm(dir, force=true, recursive=true)
+        rethrow()
+    end
     return dir
 end
 
 ## error checking utility functions
 
 create_dir_check(dir::AbstractString) = isdir(dir) ||
-        error("not a directory: $dir\nUSAGE: create([predicate,] dir, [tarball])")
+    error("not a directory: $dir\nUSAGE: create([predicate,] dir, [tarball])")
 
 list_tarball_check(tarball::AbstractString) = isfile(tarball) ||
     error("not a file: $tarball\nUSAGE: list(tarball)")
