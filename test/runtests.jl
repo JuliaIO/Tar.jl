@@ -53,22 +53,22 @@ end
 @testset "empty tarball" begin
     dir = mktempdir()
     tarball = Tar.create(dir)
-    rm(dir, force=true, recursive=true)
+    rm(dir, recursive=true)
     @test Tar.list(tarball) == [Tar.Header(".", :directory, 0o755, 0, "")]
     dir = Tar.extract(tarball)
     @test isempty(readdir(dir))
-    rm(dir, force=true, recursive=true)
+    rm(dir, recursive=true)
     open(tarball, append=true) do io
         write(io, zeros(UInt8, 512))
     end
     dir = Tar.extract(tarball)
     @test isempty(readdir(dir))
-    rm(dir, force=true, recursive=true)
+    rm(dir, recursive=true)
 end
 
 function check_tree_hash(hash::Vector{UInt8}, root::AbstractString)
     @test tree_hash(root) == hash
-    rm(root, force=true, recursive=true)
+    rm(root, recursive=true)
 end
 
 @testset "test tarball" begin
@@ -125,7 +125,7 @@ end
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
-    rm(tarball, force=true)
+    rm(tarball)
 end
 
 @testset "symlink attacks" begin
