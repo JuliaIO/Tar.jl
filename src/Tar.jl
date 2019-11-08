@@ -9,8 +9,8 @@ function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
 end
 
 include("header.jl")
-include("write.jl")
-include("read.jl")
+include("create.jl")
+include("extract.jl")
 
 ## official API: create, list, extract
 
