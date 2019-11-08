@@ -19,31 +19,37 @@ function extract_tarball(
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
-    real_root = realpath(root)
+    links = Set{String}()
     while !eof(tar)
         hdr = read_header(tar, buf=buf)
         hdr === nothing && break
         check_header(hdr)
-        # convert tarball path to real path
-        path = hdr.path[end] == '/' ? chop(hdr.path) : hdr.path
-        path = joinpath(root, split(path, '/')...)
-        # check that file to be written is not external to root via symlinks
-        let prefix = path
-            while !ispath(prefix)
-                prefix = dirname(prefix)
-            end
-            startswith(realpath(prefix), real_root) ||
-                error("refusing to extract outside of root (possible symlink attack)")
+        # normalize and check path
+        path = ""
+        parts = String[]
+        for part in split(hdr.path, '/')
+            (isempty(part) || part == ".") && continue
+            path = isempty(path) ? part : "$path/$part"
+            path in links && error("""
+            refusing to extract path with symlink prefix, possible attack
+             * symlink prefix: $(repr(path))
+             * path: $(repr(hdr.path))
+            """)
+            push!(parts, part)
         end
+        if hdr.type == :symlink
+            push!(links, path)
+        end
+        sys_path = joinpath(root, parts...)
         # create the path
         if hdr.type == :directory
-            mkpath(path)
+            mkpath(sys_path)
         else
-            if ispath(path)
+            if ispath(sys_path)
                 # delete and replace path
-                rm(path, force=true, recursive=true)
+                rm(sys_path, force=true, recursive=true)
             else
-                dir = dirname(path)
+                dir = dirname(sys_path)
                 # ensure `dir` is a directory
                 st = stat(dir)
                 if !isdir(st)
@@ -51,14 +57,14 @@ function extract_tarball(
                     mkpath(dir)
                 end
             end
-            hdr.type == :file && read_data(tar, path, size=hdr.size)
-            hdr.type == :symlink && symlink(hdr.link, path)
+            hdr.type == :file && read_data(tar, sys_path, size=hdr.size)
+            hdr.type == :symlink && symlink(hdr.link, sys_path)
         end
         if hdr.type != :symlink
-            chmod(path, hdr.mode)
+            chmod(sys_path, hdr.mode)
         elseif Sys.isbsd()
             # BSD system support symlink permissions, so try setting them...
-            ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), path, hdr.mode)
+            ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), sys_path, hdr.mode)
             systemerror(:lchmod, ret != 0)
         end
     end

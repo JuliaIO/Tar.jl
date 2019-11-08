@@ -127,3 +127,13 @@ end
     end
     rm(tarball, force=true)
 end
+
+@testset "symlink attack" begin
+    tarball, io = mktemp()
+    Tar.write_header(io, Tar.Header("dir", :directory, 0o755, 0, ""))
+    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, "dir"))
+    Tar.write_header(io, Tar.Header("link/attack", :file, 0o644, 0, ""))
+    close(io)
+    @test_throws ErrorException Tar.extract(tarball)
+    rm(tarball, force=true)
+end
