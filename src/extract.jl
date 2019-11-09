@@ -64,8 +64,10 @@ function extract_tarball(
             chmod(sys_path, hdr.mode)
         elseif Sys.isbsd()
             # BSD system support symlink permissions, so try setting them...
-            ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), sys_path, hdr.mode)
-            systemerror(:lchmod, ret != 0)
+            @static if Sys.isbsd()
+                ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), sys_path, hdr.mode)
+                systemerror(:lchmod, ret != 0)
+            end
         end
     end
 end
