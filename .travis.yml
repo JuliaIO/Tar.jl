@@ -1,0 +1,12 @@
+language: julia
+os:
+  - linux
+  - osx
+  - windows
+julia:
+  - 1.3
+  - nightly
+notifications:
+  email: false
+after_success:
+  - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())';
