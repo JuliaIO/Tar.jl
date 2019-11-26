@@ -44,7 +44,7 @@ end
 
 function create(predicate::Function, dir::AbstractString, tarball::IO)
     create_dir_check(dir)
-    write_tarball(predicate, dir, out)
+    write_tarball(predicate, tarball, dir)
     return tarball
 end
 
