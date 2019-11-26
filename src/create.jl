@@ -98,7 +98,7 @@ function write_header(
         w += write_extended_header(out, extended, buf=buf)
     end
     # emit standard header
-    std_hdr = Header(hdr.path, hdr.type, hdr.mode, hdr.size, hdr.link)
+    std_hdr = Header(hdr.path, hdr.type, hdr.mode, hdr.size, link)
     w += write_standard_header(out, std_hdr, name=name, prefix=prefix, buf=buf)
 end
 
