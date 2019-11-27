@@ -111,7 +111,7 @@ end
         end
     end
     # Skip `tar` tests when it doesn't exist or when we're on windows
-    if Sys.which(`tar`) != nothing && !Sys.iswindows()
+    if Sys.which("tar") != nothing && !Sys.iswindows()
         @testset "extract with `tar` command" begin
             root = mktempdir()
             run(`tar -C $root -xf $tarball`)
