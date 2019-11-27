@@ -16,6 +16,11 @@ function make_test_tarball()
             dir = joinpath(root, "d"^a)
             push!(paths, normpath("..", dir))
             a > 0 && mkdir(dir)
+            b_lengths = [10, 99, 100, 101, 255]
+            # don't attempt to create file paths > 260 on windows
+            @static if Sys.iswindows()
+                filter!(b_lengths, b -> b + a < 260)
+            end
             for b in [10, 99, 100, 101, 255]
                 for s in [0, 511, 512, 513, 1000]
                     f = rpad("$s-", b, "f")
