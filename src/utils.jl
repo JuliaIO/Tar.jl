@@ -31,5 +31,3 @@ end
 else
     unsorted_readdir(args...) = readdir(args...; sort=false)
 end
-
-
