@@ -19,7 +19,7 @@ function make_test_tarball()
             b_lengths = [10, 99, 100, 101, 255]
             # don't attempt to create file paths > 260 on windows
             @static if Sys.iswindows()
-                filter!(b_lengths, b -> b + a < 260)
+                filter!(b -> b + a < 260, b_lengths)
             end
             for b in [10, 99, 100, 101, 255]
                 for s in [0, 511, 512, 513, 1000]
