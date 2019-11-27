@@ -8,5 +8,4 @@ julia:
   - nightly
 notifications:
   email: false
-after_success:
-  - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())';
+codecov: true
