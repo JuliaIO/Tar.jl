@@ -12,16 +12,20 @@ end
 function make_test_tarball()
     root = mktempdir()
     let i = 0, paths = String[]
-        for a in [0, 10, 154, 155, 156, 255]
+        a_lengths = [0, 10, 154, 155, 156, 255]
+        @static if Sys.iswindows()
+            filter!( a -> 2 + a + length(root) < 260, a_lengths)
+        end
+        for a in a_lengths
             dir = joinpath(root, "d"^a)
             push!(paths, normpath("..", dir))
             a > 0 && mkdir(dir)
             b_lengths = [10, 99, 100, 101, 255]
             # don't attempt to create file paths > 260 on windows
             @static if Sys.iswindows()
-                filter!(b -> b + a < 260, b_lengths)
+                filter!(b -> 4 + b + a + length(root) < 260, b_lengths)
             end
-            for b in [10, 99, 100, 101, 255]
+            for b in b_lengths
                 for s in [0, 511, 512, 513, 1000]
                     f = rpad("$s-", b, "f")
                     x = rpad("$s-", b, "x")
