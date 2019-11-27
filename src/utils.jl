@@ -26,7 +26,7 @@ function parse_header(buf::Vector{UInt8})
     Dict(f => field_data(buf, f) for f in keys(FIELDS))
 end
 
-@static if VERSION <= v"1.3"
+@static if VERSION < v"1.4.0-DEV"
     unsorted_readdir(args...) = readdir(args...)
 else
     unsorted_readdir(args...) = readdir(args...; sort=false)
