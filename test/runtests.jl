@@ -110,10 +110,13 @@ end
             @test headers == open(Tar.list, pipeline(`bzip2 -c -9 $tarball`, `bzcat`))
         end
     end
-    @testset "extract with `tar` command" begin
-        root = mktempdir()
-        run(`tar -C $root -xf $tarball`)
-        check_tree_hash(hash, root)
+    # Skip `tar` tests when it doesn't exist or when we're on windows
+    if Sys.which(`tar`) != nothing && !Sys.iswindows()
+        @testset "extract with `tar` command" begin
+            root = mktempdir()
+            run(`tar -C $root -xf $tarball`)
+            check_tree_hash(hash, root)
+        end
     end
     @testset "Tar.extract" begin
         root = Tar.extract(tarball)
