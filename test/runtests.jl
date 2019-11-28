@@ -12,11 +12,20 @@ end
 function make_test_tarball()
     root = mktempdir()
     let i = 0, paths = String[]
-        for a in [0, 10, 154, 155, 156, 255]
+        a_lengths = [0, 10, 154, 155, 156, 255]
+        @static if Sys.iswindows()
+            filter!(a -> 2 + a + length(root) < 260, a_lengths)
+        end
+        for a in a_lengths
             dir = joinpath(root, "d"^a)
             push!(paths, normpath("..", dir))
             a > 0 && mkdir(dir)
-            for b in [10, 99, 100, 101, 255]
+            b_lengths = [10, 99, 100, 101, 255]
+            # don't attempt to create file paths > 260 on windows
+            @static if Sys.iswindows()
+                filter!(b -> 4 + b + a + length(root) < 260, b_lengths)
+            end
+            for b in b_lengths
                 for s in [0, 511, 512, 513, 1000]
                     f = rpad("$s-", b, "f")
                     x = rpad("$s-", b, "x")
@@ -101,10 +110,13 @@ end
             @test headers == open(Tar.list, pipeline(`bzip2 -c -9 $tarball`, `bzcat`))
         end
     end
-    @testset "extract with `tar` command" begin
-        root = mktempdir()
-        run(`tar -C $root -xf $tarball`)
-        check_tree_hash(hash, root)
+    # Skip `tar` tests when it doesn't exist or when we're on windows
+    if Sys.which("tar") != nothing && !Sys.iswindows()
+        @testset "extract with `tar` command" begin
+            root = mktempdir()
+            run(`tar -C $root -xf $tarball`)
+            check_tree_hash(hash, root)
+        end
     end
     @testset "Tar.extract" begin
         root = Tar.extract(tarball)
@@ -167,6 +179,7 @@ end
     rm(tarball)
 end
 
+!Sys.iswindows() &&
 @testset "symlink overwrite" begin
     # allowable and should work
     tarball₁, io = mktemp()

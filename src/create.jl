@@ -24,7 +24,7 @@ function write_tarball(
         type = '5'
         mode = 0o755
         link = ""
-        for name in readdir(sys_path, sort = false)
+        for name in unsorted_readdir(sys_path)
             path = joinpath(sys_path, name)
             predicate(path) || continue
             isdir(lstat(path)) && (name = "$name/")
