@@ -115,7 +115,7 @@ function extract(
         extract_tarball_check(tarball)
     end
     if dir !== nothing
-        extract_dir_check(dir, force=force)
+        extract_dir_check(dir, force)
         cleanup = !ispath(dir)
     else
         dir = mktempdir()
@@ -146,7 +146,7 @@ list_tarball_check(tarball::AbstractString) = isfile(tarball) ||
 extract_tarball_check(tarball::AbstractString) = isfile(tarball) ||
     error("not a file: $tarball\nUSAGE: extract(tarball, [dir])")
 
-function extract_dir_check(dir::AbstractString; force::Bool=false)
+function extract_dir_check(dir::AbstractString, force::Bool)
     st = stat(dir)
     if !isdir(st)
         ispath(st) &&
