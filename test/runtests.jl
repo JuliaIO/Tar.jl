@@ -197,3 +197,70 @@ end
     rm(tarball₁)
     rm(tarball₂)
 end
+
+function make_test_dir(gen_skip::Bool=false)
+    dir = mktempdir()
+    touch(joinpath(dir, "file"))
+    if gen_skip
+        touch(joinpath(dir, "file.skip"))
+    end
+    mkdir(joinpath(dir, "dir"))
+    touch(joinpath(dir, "dir", "file"))
+    mkdir(joinpath(dir, "empty"))
+    if gen_skip
+        touch(joinpath(dir, "dir", "file.skip"))
+    end
+    if gen_skip
+        mkdir(joinpath(dir, "dir.skip"))
+        touch(joinpath(dir, "dir.skip", "file"))
+    end
+    if !Sys.iswindows()
+        symlink("file", joinpath(dir, "link"))
+        if gen_skip
+            symlink("file", joinpath(dir, "link.skip"))
+        end
+    end
+    return dir
+end
+
+@testset "API: create" begin
+    dir = make_test_dir()
+    @test !any(splitext(name)[2] == ".skip" for name in readdir(dir))
+    # create(dir::String)
+    tarball = Tar.create(dir)
+    bytes = read(tarball)
+    @test isfile(tarball)
+    rm(tarball)
+    # create(dir::String, tarball::String)
+    tarball = tempname()
+    Tar.create(dir, tarball)
+    @test read(tarball) == bytes
+    rm(tarball)
+    # create(dir::String, tarball::IO)
+    mktemp() do tarball, io
+        Tar.create(dir, tarball)
+        close(io)
+        @test read(tarball) == bytes
+    end
+    rm(dir, recursive=true)
+    # test predicate versions
+    dir = make_test_dir(true)
+    @test any(splitext(name)[2] == ".skip" for name in readdir(dir))
+    predicate = path -> splitext(path)[2] != ".skip"
+    # create(predicate::Function, dir::String)
+    tarball = Tar.create(predicate, dir)
+    @test read(tarball) == bytes
+    rm(tarball)
+    # create(predicate::Function, dir::String, tarball::String)
+    tarball = tempname()
+    Tar.create(predicate, dir, tarball)
+    @test read(tarball) == bytes
+    rm(tarball)
+    # create(predicate::Function, dir::String, tarball::IO)
+    mktemp() do tarball, io
+        Tar.create(predicate, dir, tarball)
+        close(io)
+        @test read(tarball) == bytes
+    end
+    rm(dir, recursive=true)
+end
