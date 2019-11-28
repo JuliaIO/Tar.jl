@@ -223,6 +223,9 @@ function make_test_dir(gen_skip::Bool=false)
     return dir
 end
 
+const test_dir_paths = ["dir/file", "empty/", "file", "link"]
+Sys.iswindows() && pop!(test_dir_paths)
+
 @testset "API: create" begin
     dir = make_test_dir()
     @test !any(splitext(name)[2] == ".skip" for name in readdir(dir))
@@ -263,4 +266,35 @@ end
         @test read(tarball) == bytes
     end
     rm(dir, recursive=true)
+end
+
+@testset "API: list" begin
+    dir = make_test_dir()
+    tarball = Tar.create(dir)
+    rm(dir, recursive=true)
+    # list(tarball::String)
+    headers = Tar.list(tarball)
+    @test test_dir_paths == [hdr.path for hdr in headers]
+    # list(tarball::IO)
+    headers = open(Tar.list, tarball)
+    @test test_dir_paths == [hdr.path for hdr in headers]
+    # add a sketchy entry to tarball
+    open(tarball, append=true) do io
+        Tar.write_header(io, Tar.Header("/bad", :file, 0o644, 0, ""))
+    end
+    paths = push!(copy(test_dir_paths), "/bad")
+    # list(tarball::String; strict=true|false)
+    @test_throws ErrorException Tar.list(tarball)
+    @test_throws ErrorException Tar.list(tarball, strict=true)
+    headers = Tar.list(tarball, strict=false)
+    @test paths == [hdr.path for hdr in headers]
+    # list(tarball::IO; strict=true|false)
+    @test_throws ErrorException open(Tar.list, tarball)
+    @test_throws ErrorException open(tarball) do io
+        Tar.list(io, strict=true)
+    end
+    headers = open(tarball) do io
+        Tar.list(io, strict=false)
+    end
+    @test paths == [hdr.path for hdr in headers]
 end
