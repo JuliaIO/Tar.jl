@@ -15,6 +15,16 @@ function list_tarball(
 end
 
 function extract_tarball(
+    tarball::AbstractString,
+    root::String;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+)
+    open(tarball) do tar
+        extract_tarball(tar, root, buf=buf)
+    end
+end
+
+function extract_tarball(
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
