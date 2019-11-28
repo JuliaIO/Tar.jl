@@ -298,3 +298,62 @@ end
     end
     @test paths == [hdr.path for hdr in headers]
 end
+
+@testset "API: extract" begin
+    dir = make_test_dir()
+    hash = tree_hash(dir)
+    tarball = Tar.create(dir)
+    rm(dir, recursive=true)
+
+    # extract(tarball::String)
+    dir = Tar.extract(tarball)
+    check_tree_hash(hash, dir)
+    # extract(tarball::String, dir::String) — non-existent
+    dir = tempname()
+    Tar.extract(tarball, dir)
+    check_tree_hash(hash, dir)
+    # extract(tarball::String, dir::String) — existent, empty
+    dir = mktempdir()
+    Tar.extract(tarball, dir)
+    check_tree_hash(hash, dir)
+    # extract(tarball::String, dir::String) — non-directory (error)
+    dir = tempname()
+    touch(dir)
+    @test_throws ErrorException Tar.extract(tarball, dir)
+    rm(dir)
+    # extract(tarball::String, dir::String) — non-empty directory (error)
+    dir = mktempdir()
+    touch(joinpath(dir, "file"))
+    @test_throws ErrorException Tar.extract(tarball, dir)
+    rm(dir, recursive=true)
+
+    # extract(tarball::IO)
+    dir = open(Tar.extract, tarball)
+    check_tree_hash(hash, dir)
+    # extract(tarball::IO, dir::String) — non-existent
+    dir = tempname()
+    open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    check_tree_hash(hash, dir)
+    # extract(tarball::IO, dir::String) — existent, empty
+    dir = mktempdir()
+    open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    check_tree_hash(hash, dir)
+    # extract(tarball::IO, dir::String) — non-directory (error)
+    dir = tempname()
+    touch(dir)
+    @test_throws ErrorException open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    rm(dir)
+    # extract(tarball::IO, dir::String) — non-empty directory (error)
+    dir = mktempdir()
+    touch(joinpath(dir, "file"))
+    @test_throws ErrorException open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    rm(dir, recursive=true)
+end
