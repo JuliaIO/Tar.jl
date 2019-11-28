@@ -14,7 +14,7 @@ function make_test_tarball()
     let i = 0, paths = String[]
         a_lengths = [0, 10, 154, 155, 156, 255]
         @static if Sys.iswindows()
-            filter!( a -> 2 + a + length(root) < 260, a_lengths)
+            filter!(a -> 2 + a + length(root) < 260, a_lengths)
         end
         for a in a_lengths
             dir = joinpath(root, "d"^a)
