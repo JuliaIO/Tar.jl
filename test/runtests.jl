@@ -179,6 +179,7 @@ end
     rm(tarball)
 end
 
+!Sys.iswindows() &&
 @testset "symlink overwrite" begin
     # allowable and should work
     tarball₁, io = mktemp()
