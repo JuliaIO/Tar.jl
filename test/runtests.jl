@@ -197,3 +197,163 @@ end
     rm(tarball₁)
     rm(tarball₂)
 end
+
+function make_test_dir(gen_skip::Bool=false)
+    dir = mktempdir()
+    touch(joinpath(dir, "file"))
+    if gen_skip
+        touch(joinpath(dir, "file.skip"))
+    end
+    mkdir(joinpath(dir, "dir"))
+    touch(joinpath(dir, "dir", "file"))
+    mkdir(joinpath(dir, "empty"))
+    if gen_skip
+        touch(joinpath(dir, "dir", "file.skip"))
+    end
+    if gen_skip
+        mkdir(joinpath(dir, "dir.skip"))
+        touch(joinpath(dir, "dir.skip", "file"))
+    end
+    if !Sys.iswindows()
+        symlink("file", joinpath(dir, "link"))
+        if gen_skip
+            symlink("file", joinpath(dir, "link.skip"))
+        end
+    end
+    return dir
+end
+
+const test_dir_paths = ["dir/file", "empty/", "file", "link"]
+Sys.iswindows() && pop!(test_dir_paths)
+
+@testset "API: create" begin
+    dir = make_test_dir()
+    @test !any(splitext(name)[2] == ".skip" for name in readdir(dir))
+    # create(dir::String)
+    tarball = Tar.create(dir)
+    bytes = read(tarball)
+    @test isfile(tarball)
+    rm(tarball)
+    # create(dir::String, tarball::String)
+    tarball = tempname()
+    Tar.create(dir, tarball)
+    @test read(tarball) == bytes
+    rm(tarball)
+    # create(dir::String, tarball::IO)
+    mktemp() do tarball, io
+        Tar.create(dir, tarball)
+        close(io)
+        @test read(tarball) == bytes
+    end
+    rm(dir, recursive=true)
+    # test predicate versions
+    dir = make_test_dir(true)
+    @test any(splitext(name)[2] == ".skip" for name in readdir(dir))
+    predicate = path -> splitext(path)[2] != ".skip"
+    # create(predicate::Function, dir::String)
+    tarball = Tar.create(predicate, dir)
+    @test read(tarball) == bytes
+    rm(tarball)
+    # create(predicate::Function, dir::String, tarball::String)
+    tarball = tempname()
+    Tar.create(predicate, dir, tarball)
+    @test read(tarball) == bytes
+    rm(tarball)
+    # create(predicate::Function, dir::String, tarball::IO)
+    mktemp() do tarball, io
+        Tar.create(predicate, dir, tarball)
+        close(io)
+        @test read(tarball) == bytes
+    end
+    rm(dir, recursive=true)
+end
+
+@testset "API: list" begin
+    dir = make_test_dir()
+    tarball = Tar.create(dir)
+    rm(dir, recursive=true)
+    # list(tarball::String)
+    headers = Tar.list(tarball)
+    @test test_dir_paths == [hdr.path for hdr in headers]
+    # list(tarball::IO)
+    headers = open(Tar.list, tarball)
+    @test test_dir_paths == [hdr.path for hdr in headers]
+    # add a sketchy entry to tarball
+    open(tarball, append=true) do io
+        Tar.write_header(io, Tar.Header("/bad", :file, 0o644, 0, ""))
+    end
+    paths = push!(copy(test_dir_paths), "/bad")
+    # list(tarball::String; strict=true|false)
+    @test_throws ErrorException Tar.list(tarball)
+    @test_throws ErrorException Tar.list(tarball, strict=true)
+    headers = Tar.list(tarball, strict=false)
+    @test paths == [hdr.path for hdr in headers]
+    # list(tarball::IO; strict=true|false)
+    @test_throws ErrorException open(Tar.list, tarball)
+    @test_throws ErrorException open(tarball) do io
+        Tar.list(io, strict=true)
+    end
+    headers = open(tarball) do io
+        Tar.list(io, strict=false)
+    end
+    @test paths == [hdr.path for hdr in headers]
+end
+
+@testset "API: extract" begin
+    dir = make_test_dir()
+    hash = tree_hash(dir)
+    tarball = Tar.create(dir)
+    rm(dir, recursive=true)
+
+    # extract(tarball::String)
+    dir = Tar.extract(tarball)
+    check_tree_hash(hash, dir)
+    # extract(tarball::String, dir::String) — non-existent
+    dir = tempname()
+    Tar.extract(tarball, dir)
+    check_tree_hash(hash, dir)
+    # extract(tarball::String, dir::String) — existent, empty
+    dir = mktempdir()
+    Tar.extract(tarball, dir)
+    check_tree_hash(hash, dir)
+    # extract(tarball::String, dir::String) — non-directory (error)
+    dir = tempname()
+    touch(dir)
+    @test_throws ErrorException Tar.extract(tarball, dir)
+    rm(dir)
+    # extract(tarball::String, dir::String) — non-empty directory (error)
+    dir = mktempdir()
+    touch(joinpath(dir, "file"))
+    @test_throws ErrorException Tar.extract(tarball, dir)
+    rm(dir, recursive=true)
+
+    # extract(tarball::IO)
+    dir = open(Tar.extract, tarball)
+    check_tree_hash(hash, dir)
+    # extract(tarball::IO, dir::String) — non-existent
+    dir = tempname()
+    open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    check_tree_hash(hash, dir)
+    # extract(tarball::IO, dir::String) — existent, empty
+    dir = mktempdir()
+    open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    check_tree_hash(hash, dir)
+    # extract(tarball::IO, dir::String) — non-directory (error)
+    dir = tempname()
+    touch(dir)
+    @test_throws ErrorException open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    rm(dir)
+    # extract(tarball::IO, dir::String) — non-empty directory (error)
+    dir = mktempdir()
+    touch(joinpath(dir, "file"))
+    @test_throws ErrorException open(tarball) do io
+        Tar.extract(io, dir)
+    end
+    rm(dir, recursive=true)
+end

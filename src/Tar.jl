@@ -16,7 +16,7 @@ include("utils.jl")
 ## official API: create, list, extract
 
 """
-    create([ predicate, ] dir, [ tarball, ]) -> tarball
+    create([ predicate, ] dir, [ tarball ]) -> tarball
 
         predicate :: Function
         dir       :: AbstractString
@@ -92,48 +92,43 @@ end
 list(tarball::IO; strict::Bool=true) = list_tarball(tarball, strict=strict)
 
 """
-    extract(tarball, [ dir, ]; [ force=false ]) -> dir
+    extract(tarball, [ dir ]) -> dir
 
         tarball   :: Union{AbstractString, IO}
         dir       :: AbstractString
-        force     :: Bool
 
 Extract a tar archive ("tarball") located at the path `tarball` into the
 directory `dir`. If `tarball` is an IO object instead of a path, then the
 archive contents will be read from that IO stream. The archive is extracted to
-`dir` which must either be an existing writeable directory or a path which can
-be created as a directory with `mkdir`. By default, `extract` will refuse to
-extract into a non-empty directory, but the `force=true` option allows this. If
-`dir` is not specified, the archive is extracted into a temporary directory
-which is returned by the `extract` function call.
+`dir` which must either be an existing empty directory or a non-existent path
+which can be created as a new directory. If `dir` is not specified, the archive
+is extracted into a temporary directory which is returned by `extract`.
 """
-function extract(
-    tarball::Union{AbstractString, IO},
-    dir::Union{AbstractString,Nothing} = nothing;
-    force::Bool = false,
-)
-    if tarball isa AbstractString
-        extract_tarball_check(tarball)
-    end
-    if dir !== nothing
-        extract_dir_check(dir, force)
-        cleanup = !ispath(dir)
+function extract(tarball::Union{AbstractString, IO}, dir::AbstractString)
+    extract_tarball_check(tarball)
+    extract_dir_check(dir)
+    if ispath(dir)
+        extract_tarball(tarball, dir)
     else
-        dir = mktempdir()
-        cleanup = true
-    end
-    try if tarball isa IO
-            extract_tarball(tarball, dir)
-        else
-            open(tarball) do io
-                extract_tarball(io, dir)
-            end
-        end
-    catch
-        cleanup && rm(dir, force=true, recursive=true)
-        rethrow()
+        mkdir(dir)
+        extract_cleanup(tarball, dir)
     end
     return dir
+end
+
+function extract(tarball::Union{AbstractString, IO})
+    extract_tarball_check(tarball)
+    dir = mktempdir()
+    extract_cleanup(tarball, dir)
+    return dir
+end
+
+function extract_cleanup(tarball::Union{AbstractString, IO}, dir::AbstractString)
+    try extract_tarball(tarball, dir)
+    catch
+        rm(dir, force=true, recursive=true)
+        rethrow()
+    end
 end
 
 ## error checking utility functions
@@ -147,16 +142,14 @@ list_tarball_check(tarball::AbstractString) = isfile(tarball) ||
 extract_tarball_check(tarball::AbstractString) = isfile(tarball) ||
     error("not a file: $tarball\nUSAGE: extract(tarball, [dir])")
 
-function extract_dir_check(dir::AbstractString, force::Bool)
+extract_tarball_check(tarball::IO) = nothing
+
+function extract_dir_check(dir::AbstractString)
     st = stat(dir)
-    if !isdir(st)
-        ispath(st) &&
-            error("not a directory: $dir\nUSAGE: extract(tarball, [dir])")
-        mkdir(dir)
-    else
-        force || isempty(readdir(dir)) ||
-            error("directory not empty: $dir\n USAGE: extract(tarball, [dir])")
-    end
+    ispath(st) && !isdir(st) &&
+        error("not a directory: $dir\nUSAGE: extract(tarball, [dir])")
+    isdir(st) && !isempty(readdir(dir)) &&
+        error("directory not empty: $dir\n USAGE: extract(tarball, [dir])")
 end
 
 end # module
