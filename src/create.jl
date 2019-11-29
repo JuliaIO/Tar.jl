@@ -16,8 +16,7 @@ function write_tarball(
     elseif isfile(st)
         size = filesize(st)
         type = '0'
-        # TODO: git's executable criteria w/r/t user, group, other?
-        mode = iszero(filemode(st) & 0o111) ? 0o644 : 0o755
+        mode = iszero(filemode(st) & 0o100) ? 0o644 : 0o755
         link = ""
     elseif isdir(st)
         size = 0
