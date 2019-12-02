@@ -18,8 +18,8 @@ It also ignores the owner, group, modification time, device and inode of all con
 All of these ignored metadata fields are set to zero or empty (depending on whether the field is a string or an integer) when tar files are created.
 When creating a tarball, permission modes are recorded only to the extent that git considers them significant:
 
-* a file with no executable bits set is archived with mode `0o644`
-* a file with any executable bits set is archived with mode `0o755`
+* a file with user executable bit unset is archived with mode `0o644`
+* a file with user executable bit set is archived with mode `0o755`
 * directories and symlinks are always archived with mode `0o755`
 
 When extracting a tarball, the mode recorded in the archive is applied to the extracted files, symlinks and directories, even if they are modes other than `0o644` or `0o755`.
