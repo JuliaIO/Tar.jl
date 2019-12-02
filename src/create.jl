@@ -1,3 +1,9 @@
+@static if VERSION < v"1.4.0-DEV"
+    unsorted_readdir(args...) = readdir(args...)
+else
+    unsorted_readdir(args...) = readdir(args...; sort=false)
+end
+
 function write_tarball(
     predicate::Function,
     out::IO,
