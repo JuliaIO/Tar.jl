@@ -1,5 +1,8 @@
 # Tar
 
+[![Build Status](https://travis-ci.org/JuliaLang/Tar.jl.svg?branch=master)](https://travis-ci.org/JuliaLang/Tar.jl)
+[![Codecov](https://codecov.io/gh/JuliaLang/Tar.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaLang/Tar.jl)
+
 The `Tar` package can list, extract and create POSIX TAR archives ("tarballs") as specified in [POSIX 1003.1-2001](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html).
 It does not aim to read other historical variants of the TAR format and it intentionally ignores much of the metadata included in the TAR format.
 
