@@ -29,7 +29,7 @@ Upon extraction, all files, symlinks and directorues are owned by the current us
 
 The public API of `Tar` includes three functions:
 
-* `Tar.create([ predicate, ] dir, [ tarball, ]) -> tarball`
+* `Tar.create([ predicate, ] dir, [ tarball ]) -> tarball`
   - `predicate :: Function`
   - `dir       :: AbstractString`
   - `tarball   :: Union{AbstractString, IO}`
@@ -38,9 +38,8 @@ The public API of `Tar` includes three functions:
   - `tarball   :: Union{AbstractString, IO}`
   - `strict    :: Bool`
 
-* `Tar.extract(tarball, [ dir, ]; [ force=false ]) -> dir`
+* `Tar.extract(tarball, [ dir ]) -> dir`
   - `tarball   :: Union{AbstractString, IO}`
   - `dir       :: AbstractString`
-  - `force     :: Bool`
 
 Use `?` in the REPL for more detail on how these API functions work.
