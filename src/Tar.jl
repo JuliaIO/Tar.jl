@@ -11,7 +11,6 @@ end
 include("header.jl")
 include("create.jl")
 include("extract.jl")
-include("utils.jl")
 
 ## official API: create, list, extract
 
