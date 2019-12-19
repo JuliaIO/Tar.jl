@@ -70,12 +70,13 @@ function extract_tarball(
             hdr.type == :file && read_data(tar, sys_path, size=hdr.size)
             hdr.type == :symlink && symlink(hdr.link, sys_path)
         end
+        mode = (hdr.type == :file && iszero(hdr.mode & 0o100)) ? 0o644 : 0o755
         if hdr.type != :symlink
-            chmod(sys_path, hdr.mode)
+            chmod(sys_path, mode)
         elseif Sys.isbsd()
-            # BSD system support symlink permissions, so try setting them...
+            # BSD systems support symlink permissions, so try setting them...
             @static if Sys.isbsd()
-                ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), sys_path, hdr.mode)
+                ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), sys_path, mode)
                 systemerror(:lchmod, ret != 0)
             end
         end
