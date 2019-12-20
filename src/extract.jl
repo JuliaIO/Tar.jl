@@ -70,15 +70,11 @@ function extract_tarball(
             hdr.type == :file && read_data(tar, sys_path, size=hdr.size)
             hdr.type == :symlink && symlink(hdr.link, sys_path)
         end
-        mode = (hdr.type == :file && iszero(hdr.mode & 0o100)) ? 0o644 : 0o755
-        if hdr.type != :symlink
-            chmod(sys_path, mode)
-        elseif Sys.isbsd()
-            # BSD systems support symlink permissions, so try setting them...
-            @static if Sys.isbsd()
-                ret = ccall(:lchmod, Cint, (Cstring, Base.Cmode_t), sys_path, mode)
-                systemerror(:lchmod, ret != 0)
-            end
+        if hdr.type == :file && !iszero(hdr.mode & 0o100)
+            mode = filemode(sys_path)
+            # exec bits from user bits, but set user bit at least:
+            chmod(sys_path, mode | ((mode & 0o444) >> 2) | 0o100)
+            # TODO: use actual umask exec bits instead?
         end
     end
 end
