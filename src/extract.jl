@@ -52,28 +52,34 @@ function extract_tarball(
         else
             delete!(links, path)
         end
+        # get the file system version of the path
         sys_path = joinpath(root, parts...)
         # delete anything that's there already
         ispath(sys_path) && rm(sys_path, force=true, recursive=true)
+        # ensure dirname(sys_path) is a directory
+        dir = dirname(sys_path)
+        st = stat(dir)
+        if !isdir(st)
+            ispath(st) && rm(dir, force=true, recursive=true)
+            mkpath(dir)
+        end
         # create the path
         if hdr.type == :directory
-            mkpath(sys_path)
-        else
-            dir = dirname(sys_path)
-            # ensure `dir` is a directory
-            st = stat(dir)
-            if !isdir(st)
-                ispath(st) && rm(dir, force=true, recursive=true)
-                mkpath(dir)
+            mkdir(sys_path)
+        elseif hdr.type == :symlink
+            symlink(hdr.link, sys_path)
+        elseif hdr.type == :file
+            read_data(tar, sys_path, size=hdr.size)
+            # set executable bit if necessary
+            if !iszero(hdr.mode & 0o100)
+                mode = filemode(sys_path)
+                # exec bits = read bits, but set user read at least:
+                chmod(sys_path, mode | ((mode & 0o444) >> 2) | 0o100)
+                # TODO: use actual umask exec bits instead?
             end
-            hdr.type == :file && read_data(tar, sys_path, size=hdr.size)
-            hdr.type == :symlink && symlink(hdr.link, sys_path)
-        end
-        if hdr.type == :file && !iszero(hdr.mode & 0o100)
-            mode = filemode(sys_path)
-            # exec bits from user bits, but set user bit at least:
-            chmod(sys_path, mode | ((mode & 0o444) >> 2) | 0o100)
-            # TODO: use actual umask exec bits instead?
+        else
+            # should already be caught by check_header
+            error("unsupported tarball entry type: $(hdr.type)")
         end
     end
 end
