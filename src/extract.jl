@@ -49,23 +49,22 @@ function extract_tarball(
         end
         if hdr.type == :symlink
             push!(links, path)
+        else
+            delete!(links, path)
         end
         sys_path = joinpath(root, parts...)
+        # delete anything that's there already
+        ispath(sys_path) && rm(sys_path, force=true, recursive=true)
         # create the path
         if hdr.type == :directory
             mkpath(sys_path)
         else
-            if ispath(sys_path)
-                # delete and replace path
-                rm(sys_path, force=true, recursive=true)
-            else
-                dir = dirname(sys_path)
-                # ensure `dir` is a directory
-                st = stat(dir)
-                if !isdir(st)
-                    ispath(st) && rm(dir, force=true, recursive=true)
-                    mkpath(dir)
-                end
+            dir = dirname(sys_path)
+            # ensure `dir` is a directory
+            st = stat(dir)
+            if !isdir(st)
+                ispath(st) && rm(dir, force=true, recursive=true)
+                mkpath(dir)
             end
             hdr.type == :file && read_data(tar, sys_path, size=hdr.size)
             hdr.type == :symlink && symlink(hdr.link, sys_path)
