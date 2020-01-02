@@ -9,7 +9,7 @@ function gen_file(file::String, size::Int)
     end
 end
 
-function make_test_tarball()
+function make_test_tarball(tar_create::Function = Tar.create)
     root = mktempdir()
     let i = 0, paths = String[]
         a_lengths = [0, 10, 154, 155, 156, 255]
@@ -41,8 +41,8 @@ function make_test_tarball()
                 dir′ = joinpath(dir, "s"^b)
                 mkpath(dir′)
                 push!(paths, dir′)
-                target = relpath(paths[i += 1], root)
                 link = joinpath(dir, "l"^b)
+                target = relpath(paths[i += 1], link)
                 symlink(target, link)
                 push!(paths, link)
                 broken = joinpath(dir, "b"^b)
@@ -54,7 +54,7 @@ function make_test_tarball()
         end
     end
     hash = tree_hash(root)
-    tarball = Tar.create(root)
+    tarball = tar_create(root)
     rm(root, force=true, recursive=true)
     return tarball, hash
 end
@@ -138,6 +138,23 @@ end
         check_tree_hash(hash, root)
     end
     rm(tarball)
+end
+
+Sys.which("gtar") != nothing && !Sys.iswindows() &&
+@testset "GNU extensions" begin
+    # make a test tarball with `gtar` instead of Tar.create
+    tarball, hash = make_test_tarball() do root
+        tarball, io = mktemp(); close(io)
+        run(`gtar --format=gnu -C $root -cf $tarball .`)
+        return tarball
+    end
+    hdrs = Tar.list(tarball, raw=true)
+    # test that both long link and long name entries are created
+    @test any(h.path == "././@LongLink" && h.type == :L for h in hdrs)
+    @test any(h.path == "././@LongLink" && h.type == :K for h in hdrs)
+    # test that Tar can extract these GNU entries correctly
+    root = Tar.extract(tarball)
+    check_tree_hash(hash, root)
 end
 
 @testset "symlink attacks" begin

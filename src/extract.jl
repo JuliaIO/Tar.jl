@@ -90,22 +90,41 @@ end
 function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr = read_standard_header(io, buf=buf)
     hdr === nothing && return nothing
-    hdr.type in (:x, :g) || return hdr
     size = path = link = nothing
-    metadata = read_extended_metadata(io, hdr.size, buf=buf)
-    for (key, value) in metadata
-        if key == "size"
-            size = tryparse(UInt64, value)
-            size === nothing &&
-                error("invalid extended header size value: $(repr(value))")
-        elseif key == "path"
-            path = value
-        elseif key == "linkpath"
-            link = value
+    while true
+        if hdr.type == :x # POSIX extended header
+            metadata = read_extended_metadata(io, hdr.size, buf=buf)
+            for (key, value) in metadata
+                if key == "size"
+                    size = tryparse(UInt64, value)
+                    size === nothing &&
+                        error("invalid extended header size value: $(repr(value))")
+                elseif key == "path"
+                    path = value
+                elseif key == "linkpath"
+                    link = value
+                elseif key == "comment"
+                    # ignore
+                else
+                    error("unsupported extended header key: $(repr(key))")
+                end
+            end
+        elseif hdr.type == :L # GNU long name header
+            path = read_data(io, size=hdr.size, buf=buf)
+            path[end] == '\0' ||
+                error("malformed GNU long name (trailing `\0` expected): $(repr(path))")
+            path = chop(path)
+        elseif hdr.type == :K # GNU long link header
+            link = read_data(io, size=hdr.size, buf=buf)
+            link[end] == '\0' ||
+                error("malformed GNU long link (trailing `\0` expected): $(repr(link))")
+            link = chop(link)
+        else
+            break # non-extension header block
         end
+        hdr = read_standard_header(io, buf=buf)
+        hdr === nothing && error("premature end of tar file")
     end
-    hdr = read_standard_header(io, buf=buf)
-    hdr === nothing && error("premature end of tar file")
     return Header(
         something(path, hdr.path),
         hdr.type,
@@ -254,4 +273,14 @@ function read_data(
     open(file, write=true) do file′
         read_data(tar, file′, size=size, buf=buf)
     end
+end
+
+function read_data(
+    tar::IO;
+    size::Integer,
+    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+)::String
+    io = IOBuffer(sizehint=size)
+    read_data(tar, io, size=size, buf=buf)
+    return String(take!(io))
 end
