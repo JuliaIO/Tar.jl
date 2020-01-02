@@ -89,7 +89,7 @@ function check_header(hdr::Header)
     occursin(r"(^|/)\.\.(/|$)", hdr.path) &&
         err("path contains '..' component")
     hdr.type in (:file, :symlink, :directory) ||
-        err("unsupported file type")
+        err("unsupported entry type")
     hdr.type ∉ (:hardlink, :symlink) && !isempty(hdr.link) &&
         err("non-link with link path")
     hdr.type == :symlink && hdr.size != 0 &&

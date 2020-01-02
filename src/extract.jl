@@ -77,8 +77,7 @@ function extract_tarball(
                 chmod(sys_path, mode | ((mode & 0o444) >> 2) | 0o100)
                 # TODO: use actual umask exec bits instead?
             end
-        else
-            # should already be caught by check_header
+        else # should already be caught by check_header
             error("unsupported tarball entry type: $(hdr.type)")
         end
     end
@@ -105,7 +104,8 @@ function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr === nothing && error("premature end of tar file")
     return Header(
         something(path, hdr.path),
-        hdr.type, hdr.mode,
+        hdr.type,
+        hdr.mode,
         something(size, hdr.size),
         something(link, hdr.link),
     )
@@ -228,7 +228,7 @@ function read_data(
     file::IO;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
-)
+)::Nothing
     resize!(buf, 512)
     while size > 0
         r = readbytes!(tar, buf)
@@ -246,7 +246,7 @@ function read_data(
     file::String;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
-)
+)::Nothing
     open(file, write=true) do file′
         read_data(tar, file′, size=size, buf=buf)
     end
