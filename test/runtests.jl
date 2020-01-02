@@ -110,7 +110,7 @@ end
             @test headers == open(Tar.list, pipeline(`bzip2 -c -9 $tarball`, `bzcat`))
         end
     end
-    # Skip `tar` tests when it doesn't exist or when we're on windows
+    # skip `tar` tests when it doesn't exist or when we're on windows
     if Sys.which("tar") != nothing && !Sys.iswindows()
         @testset "extract with `tar` command" begin
             root = mktempdir()
