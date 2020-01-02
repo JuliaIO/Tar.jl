@@ -1,11 +1,15 @@
 function list_tarball(
     tar::IO;
-    strict::Bool = true,
+    raw::Bool = false,
+    strict::Bool = !raw,
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
+    raw && strict &&
+        error("`raw=true` and `strict=true` options are incompatible")
     headers = Header[]
+    read_hdr = raw ? read_standard_header : read_header
     while !eof(tar)
-        hdr = read_header(tar, buf=buf)
+        hdr = read_hdr(tar, buf=buf)
         hdr === nothing && break
         strict && check_header(hdr)
         push!(headers, hdr)
