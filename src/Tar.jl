@@ -81,10 +81,10 @@ these checks and list all the the contents of the tar file whether `extract`
 would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
 """
-function list(tarball::AbstractString; strict::Bool=true)
+function list(tarball::AbstractString; raw::Bool=false, strict::Bool=!raw)
     list_tarball_check(tarball)
     open(tarball) do io
-        list_tarball(io, strict=strict)
+        list_tarball(io, raw=raw, strict=strict)
     end
 end
 
