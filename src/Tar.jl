@@ -88,7 +88,8 @@ function list(tarball::AbstractString; raw::Bool=false, strict::Bool=!raw)
     end
 end
 
-list(tarball::IO; strict::Bool=true) = list_tarball(tarball, strict=strict)
+list(tarball::IO; raw::Bool=false, strict::Bool=!raw) =
+    list_tarball(tarball, raw=raw, strict=strict)
 
 """
     extract(tarball, [ dir ]) -> dir
