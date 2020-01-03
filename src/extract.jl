@@ -109,16 +109,14 @@ function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
                     error("unsupported extended header key: $(repr(key))")
                 end
             end
-        elseif hdr.type == :L # GNU long name header
-            path = read_data(io, size=hdr.size, buf=buf)
-            path[end] == '\0' ||
-                error("malformed GNU long name (trailing `\0` expected): $(repr(path))")
-            path = chop(path)
-        elseif hdr.type == :K # GNU long link header
-            link = read_data(io, size=hdr.size, buf=buf)
-            link[end] == '\0' ||
-                error("malformed GNU long link (trailing `\0` expected): $(repr(link))")
-            link = chop(link)
+        elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
+            # GNU long name or link header
+            value = read_data(io, size=hdr.size, buf=buf)
+            value[end] == '\0' ||
+                error("malformed GNU long header (trailing `\0` expected): $(repr(value))")
+            value = chop(value)
+            hdr.type == :L && (path = value)
+            hdr.type == :K && (link = value)
         else
             break # non-extension header block
         end
@@ -206,7 +204,7 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     occursin(r"^ustar\s*$", magic) ||
         error("unknown magic string for tar file: $(repr(magic))")
     occursin(r"^0* *$", version) ||
-        error("unkonwn version string for tar file: $(repr(version))")
+        error("unknown version string for tar file: $(repr(version))")
     path = isempty(prefix) ? name : "$prefix/$name"
     return Header(path, to_symbolic_type(type), mode, size, link)
 end
