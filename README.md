@@ -6,7 +6,7 @@
 The `Tar` package can list, extract and create POSIX TAR archives ("tarballs") as specified in [POSIX 1003.1-2001](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html).
 It is designed to support using the TAR format as a mechanism for sending trees of files from one system to another, rather than for the historical use case of backing up files for restoration to the same system.
 Because of this design goal, `Tar` intentionally ignores much of the metadata included in the TAR format, which does not make sense for the data transfer use case.
-The package also does not aim to read or create legacy non-POSIX variants of the TAR format.
+The package also does not aim to read or create legacy non-POSIX variants of the TAR format, although it does support reading GNU long name and long link extensions.
 
 ## Design & Features
 
