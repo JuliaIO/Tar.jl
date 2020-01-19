@@ -140,21 +140,33 @@ end
     rm(tarball)
 end
 
-Sys.which("gtar") != nothing && !Sys.iswindows() &&
-@testset "GNU extensions" begin
-    # make a test tarball with `gtar` instead of Tar.create
-    tarball, hash = make_test_tarball() do root
-        tarball, io = mktemp(); close(io)
-        run(`gtar --format=gnu -C $root -cf $tarball .`)
-        return tarball
+if Sys.which("gtar") != nothing && !Sys.iswindows()
+    @testset "POSIX extensions" begin
+        # make a test POSIX tarball with `gtar` instead of Tar.create
+        tarball, hash = make_test_tarball() do root
+            tarball, io = mktemp(); close(io)
+            run(`gtar --format=posix -C $root -cf $tarball .`)
+            return tarball
+        end
+        # TODO: check that extended headers contain `mtime` etc.
+        root = Tar.extract(tarball)
+        check_tree_hash(hash, root)
     end
-    hdrs = Tar.list(tarball, raw=true)
-    # test that both long link and long name entries are created
-    @test any(h.path == "././@LongLink" && h.type == :L for h in hdrs)
-    @test any(h.path == "././@LongLink" && h.type == :K for h in hdrs)
-    # test that Tar can extract these GNU entries correctly
-    root = Tar.extract(tarball)
-    check_tree_hash(hash, root)
+    @testset "GNU extensions" begin
+        # make a test GNU tarball with `gtar` instead of Tar.create
+        tarball, hash = make_test_tarball() do root
+            tarball, io = mktemp(); close(io)
+            run(`gtar --format=gnu -C $root -cf $tarball .`)
+            return tarball
+        end
+        hdrs = Tar.list(tarball, raw=true)
+        # test that both long link and long name entries are created
+        @test any(h.path == "././@LongLink" && h.type == :L for h in hdrs)
+        @test any(h.path == "././@LongLink" && h.type == :K for h in hdrs)
+        # test that Tar can extract these GNU entries correctly
+        root = Tar.extract(tarball)
+        check_tree_hash(hash, root)
+    end
 end
 
 @testset "symlink attacks" begin
