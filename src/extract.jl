@@ -87,6 +87,19 @@ function extract_tarball(
     end
 end
 
+const IGNORED_EXTENDED_HEADERS = [
+    "atime",
+    "charset",
+    "comment",
+    "ctime", # not in POSIX standard but emitted by GNU tar in POSIX mode
+    "gid",
+    "gname",
+    "hdrcharset",
+    "mtime",
+    "uid",
+    "uname",
+]
+
 function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr = read_standard_header(io, buf=buf)
     hdr === nothing && return nothing
@@ -103,10 +116,8 @@ function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
                     path = value
                 elseif key == "linkpath"
                     link = value
-                elseif key == "comment"
-                    # ignore
-                else
-                    error("unsupported extended header key: $(repr(key))")
+                elseif key ∉ IGNORED_EXTENDED_HEADERS
+                    error("unknown extended header key: $(repr(key))")
                 end
             end
         elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
