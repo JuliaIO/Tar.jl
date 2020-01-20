@@ -97,7 +97,8 @@ As a result, an important and useful consequence of `Tar`'s design is that it ha
 One important caveat to keep in mind is that `git` ignores directories that recursively contain only directories—_i.e._ unless there's a file or a symlink somewhere, `git` will not acknowledge the existence of a subdirectory.
 This means that two trees with the same `git` tree hash can produce different tarballs if they differ by subdirectories containing no files or symlinks:
 `git` will ignore those subdirectories, while `Tar` will not.
-Therefore, they will have the same `git` tree hash, but produce different tarballs. Two _identical_ file trees will always produce identical tarballs, however, and that tarball should remain stable in future versions of the `Tar` package.
+Therefore, they will have the same `git` tree hash, but produce different tarballs.
+Two _identical_ file trees will always produce identical tarballs, however, and that tarball should remain stable in future versions of the `Tar` package.
 
 ## API & Usage
 
@@ -106,7 +107,7 @@ The public API of `Tar` includes three functions and one type:
 * `create` — creates a tarball from an on-disk file tree
 * `extract` — extracts a tarball to an on-disk file tree
 * `list` — lists the contents of a tarball as a vector of `Header` objects
-* `Header` — struct representing metadata that `Tar` considers important in a TAR entry
+* `Header` — struct representing metadata that `Tar` considers important in a TAR entry
 
 None of these are exported, however: the recommended usage is to do `import Tar` and then access all of these names fully qualified as `Tar.create`, `Tar.extract` and so on.
 
@@ -180,3 +181,36 @@ types other than `file`, `symlink` and `directory`; [`list`](#Tarlist) will only
 list other kinds of records if called with `strict=false`.
 
 <!-- END: copied from inline doc strings -->
+
+### API comparison with command-line `tar`
+
+It might be helpful to compare the `Tar` API with command-line `tar`.
+Unlike `tar -c` the `Tar.create` function does not include any of the path you tell it to bundle in the resulting TAR file:
+the location of the data is not part of the data.
+Doing `Tar.create(dir, tarball)` is roughly equivalent to running the following `tar` command:
+```sh
+tar -f $tarball -C $dir -c $(cd $dir; ls -A)
+```
+In other words, `tar` is told to change into the directory  `dir` before constructing the tarball and then include all the top-level items in that directory without any path prefix.
+Note that the above command does not fully emulate the behavior of `Tar.create`:
+it does not sort entries in the same order and it still records user and group information, modification times and exact permissions.
+Coaxing command-line `tar` programs to omit this non-portable information and use a portable (and `git`-compatible sort order) is non-trivial.
+
+Another difference from command-line `tar`:
+non-empty directories are also omitted from the tarballs that `Tar` creates since no metadata is recorded about directories aside from the fact that they exist and the existence of non-empty directories is already implied by the fact that they contain something else.
+If, in the future, the ability to record metadata about directories is added, tarballs will record entries for non-empty directories with non-default metadata.
+
+On the extraction side of things, doing `Tar.extract(tarball, dir)` is roughly equivalent to the following commands:
+```sh
+test -d $dir || mkdir $dir
+tar -f $tarball -C $dir -mx
+```
+Again, `tar` is told to change into the directory `dir` before extracting the tarball and to extract each path relative to that directory.
+The `-m` option tells `tar` to ignore the modification times recorded in the tarball and just let files and directories have their natural modification times.
+
+If the current user has elevated privileges, the `tar` command will attempt to change the owner and group of files to what is recorded in the tarball, whereas `Tar.extract` will never do that.
+The `tar` command may also try to restore permissions without respecting the current `umask` if the user is an administrator.
+Again, `Tar.extract` will never do that—it behaves the same way for any users:
+by ignoring any user/group/permission information, aside from whether plain files are executable by their owner or not.
+To suppress these behaviors with GNU tar, you can use the `--no-same-owner` and `--no-same-permissions` options;
+these options are not broadly supported by other `tar` commands, which may not have options to support these behaviors.
