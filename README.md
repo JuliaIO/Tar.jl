@@ -182,7 +182,7 @@ list other kinds of records if called with `strict=false`.
 
 <!-- END: copied from inline doc strings -->
 
-### API comparison with command-line `tar`
+### API comparison with command-line tar
 
 It might be helpful to compare the `Tar` API with command-line `tar`.
 Unlike `tar -c` the `Tar.create` function does not include any of the path you tell it to bundle in the resulting TAR file:
