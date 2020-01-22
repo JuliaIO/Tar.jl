@@ -1,4 +1,5 @@
 using Test
+using Tar_jll
 
 import Tar
 import Pkg.GitTools: tree_hash
@@ -140,12 +141,12 @@ end
     rm(tarball)
 end
 
-if Sys.which("gtar") != nothing && !Sys.iswindows()
+if !Sys.iswindows()
     @testset "POSIX extensions" begin
-        # make a test POSIX tarball with `gtar` instead of Tar.create
+        # make a test POSIX tarball with GNU `tar` from Tar_jll instead of Tar.create
         tarball, hash = make_test_tarball() do root
             tarball, io = mktemp(); close(io)
-            run(`gtar --format=posix -C $root -cf $tarball .`)
+            tar(gtar -> run(`$gtar --format=posix -C $root -cf $tarball .`))
             return tarball
         end
         # TODO: check that extended headers contain `mtime` etc.
@@ -153,10 +154,10 @@ if Sys.which("gtar") != nothing && !Sys.iswindows()
         check_tree_hash(hash, root)
     end
     @testset "GNU extensions" begin
-        # make a test GNU tarball with `gtar` instead of Tar.create
+        # make a test GNU tarball with GNU `tar` from Tar_jll instead of Tar.create
         tarball, hash = make_test_tarball() do root
             tarball, io = mktemp(); close(io)
-            run(`gtar --format=gnu -C $root -cf $tarball .`)
+            tar(gtar -> run(`$gtar --format=gnu -C $root -cf $tarball .`))
             return tarball
         end
         hdrs = Tar.list(tarball, raw=true)
