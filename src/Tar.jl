@@ -53,11 +53,11 @@ function create(predicate::Function, dir::AbstractString)
     tarball, out = mktemp()
     try write_tarball(predicate, out, dir)
     catch
+        close(out)
         rm(tarball, force=true)
         rethrow()
-    finally
-        close(out)
     end
+    close(out)
     return tarball
 end
 
