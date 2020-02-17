@@ -28,7 +28,9 @@ tarball content is written to that handle instead (the handle is left open).
 
 If a `predicate` function is passed, it is called on each system path that is
 encountered while recursively searching `dir` and `path` is only included in the
-tarball if `predicate(path)` is true.
+tarball if `predicate(path)` is true. If `predicate(path)` returns false for a
+directory, then the directory is excluded entirely: nothing under that directory
+will be included in the archive.
 """
 function create(predicate::Function, dir::AbstractString, tarball::AbstractString)
     create_dir_check(dir)
