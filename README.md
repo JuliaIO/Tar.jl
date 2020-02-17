@@ -1,7 +1,7 @@
 # Tar.jl
 
-[![Build Status](https://travis-ci.org/JuliaLang/Tar.jl.svg?branch=master)](https://travis-ci.org/JuliaLang/Tar.jl)
-[![Codecov](https://codecov.io/gh/JuliaLang/Tar.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaLang/Tar.jl)
+[![Build Status](https://travis-ci.org/JuliaIO/Tar.jl.svg?branch=master)](https://travis-ci.org/JuliaIO/Tar.jl)
+[![Codecov](https://codecov.io/gh/JuliaIO/Tar.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaIO/Tar.jl)
 
 The `Tar` package can list, extract and create POSIX TAR archives ("tarballs") as specified in [POSIX 1003.1-2001](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html).
 It is designed to support using the TAR format as a mechanism for sending trees of files from one system to another, rather than for the historical use case of backing up files for restoration to the same system.
