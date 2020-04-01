@@ -129,7 +129,7 @@ function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
                 elseif hdr.type == :x && key == "linkpath"
                     link = value
                 elseif key ∉ ignored_headers
-                    error("unexpcted extended ($(hdr.type)) header: $(repr(key))")
+                    error("unexpected extended ($(hdr.type)) header: $(repr(key))")
                 end
             end
         elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
