@@ -87,7 +87,17 @@ function extract_tarball(
     end
 end
 
-const IGNORED_EXTENDED_HEADERS = [
+const IGNORED_EXTENDED_GLOBAL_HEADERS = [
+    "charset",
+    "comment",
+    "gid",
+    "gname",
+    "hdrcharset",
+    "uid",
+    "uname",
+]
+
+const IGNORED_EXTENDED_LOCAL_HEADERS = [
     "atime",
     "charset",
     "comment",
@@ -105,19 +115,21 @@ function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
     hdr === nothing && return nothing
     size = path = link = nothing
     while true
-        if hdr.type == :x # POSIX extended header
+        if hdr.type in (:x, :g) # POSIX extended headers
             metadata = read_extended_metadata(io, hdr.size, buf=buf)
+            ignored_headers = hdr.type == :x ? IGNORED_EXTENDED_LOCAL_HEADERS :
+                                               IGNORED_EXTENDED_GLOBAL_HEADERS
             for (key, value) in metadata
-                if key == "size"
+                if hdr.type == :x && key == "size"
                     size = tryparse(UInt64, value)
                     size === nothing &&
                         error("invalid extended header size value: $(repr(value))")
-                elseif key == "path"
+                elseif hdr.type == :x && key == "path"
                     path = value
-                elseif key == "linkpath"
+                elseif hdr.type == :x && key == "linkpath"
                     link = value
-                elseif key ∉ IGNORED_EXTENDED_HEADERS
-                    error("unknown extended header key: $(repr(key))")
+                elseif key ∉ ignored_headers
+                    error("unexpected extended ($(hdr.type)) header: $(repr(key))")
                 end
             end
         elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
