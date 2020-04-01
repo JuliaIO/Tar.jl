@@ -142,11 +142,13 @@ end
 end
 
 if !Sys.iswindows()
-    @testset "POSIX extensions" begin
+    @testset "POSIX extended headers" begin
         # make a test POSIX tarball with GNU `tar` from Tar_jll instead of Tar.create
         tarball, hash = make_test_tarball() do root
-            tarball, io = mktemp(); close(io)
-            tar(gtar -> run(`$gtar --format=posix -C $root -cf $tarball .`))
+            tarball, io = mktemp()
+            Tar.write_extended_header(io, type = :g, ["comment" => "Julia Rocks!"])
+            close(io)
+            tar(gtar -> run(`$gtar --format=posix -C $root --append -f $tarball .`))
             return tarball
         end
         # TODO: check that extended headers contain `mtime` etc.
