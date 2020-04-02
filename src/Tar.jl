@@ -12,12 +12,14 @@ include("header.jl")
 include("create.jl")
 include("extract.jl")
 
+const true_predicate = _ -> true
+
 ## official API: create, list, extract
 
 """
     create([ predicate, ] dir, [ tarball ]) -> tarball
 
-        predicate :: Function
+        predicate :: String --> Bool
         dir       :: AbstractString
         tarball   :: Union{AbstractString, IO}
 
@@ -64,8 +66,9 @@ function create(predicate::Function, dir::AbstractString)
 end
 
 create(dir::AbstractString, tarball::Union{AbstractString, IO}) =
-    create(p->true, dir, tarball)
-create(dir::AbstractString) = create(p->true, dir)
+    create(true_predicate, dir, tarball)
+create(dir::AbstractString) =
+    create(true_predicate, dir)
 
 """
     list(tarball; [ strict = true ]) -> Vector{Header}
@@ -94,8 +97,9 @@ list(tarball::IO; raw::Bool=false, strict::Bool=!raw) =
     list_tarball(tarball, raw=raw, strict=strict)
 
 """
-    extract(tarball, [ dir ]) -> dir
+    extract([ predicate, ] tarball, [ dir ]) -> dir
 
+        predicate :: Header --> Bool
         tarball   :: Union{AbstractString, IO}
         dir       :: AbstractString
 
@@ -105,28 +109,47 @@ archive contents will be read from that IO stream. The archive is extracted to
 `dir` which must either be an existing empty directory or a non-existent path
 which can be created as a new directory. If `dir` is not specified, the archive
 is extracted into a temporary directory which is returned by `extract`.
+
+If a `predicate` function is passed, it is called on each `Header` object that
+is encountered while extracting `tarball` and the entry is only extracted if the
+`predicate(hdr)` is true. This can be used to selectively extract only parts of
+an archive, to skip entries that cause `extract` to throw an error, or to record
+what is extracted during the extraction process.
 """
-function extract(tarball::Union{AbstractString, IO}, dir::AbstractString)
+function extract(
+    predicate::Function,
+    tarball::Union{AbstractString, IO},
+    dir::AbstractString,
+)
     extract_tarball_check(tarball)
     extract_dir_check(dir)
     if ispath(dir)
-        extract_tarball(tarball, dir)
+        extract_tarball(predicate, tarball, dir)
     else
         mkdir(dir)
-        extract_cleanup(tarball, dir)
+        extract_tarball_with_cleanup(predicate, tarball, dir)
     end
     return dir
 end
 
-function extract(tarball::Union{AbstractString, IO})
+function extract(predicate::Function, tarball::Union{AbstractString, IO})
     extract_tarball_check(tarball)
     dir = mktempdir()
-    extract_cleanup(tarball, dir)
+    extract_tarball_with_cleanup(predicate, tarball, dir)
     return dir
 end
 
-function extract_cleanup(tarball::Union{AbstractString, IO}, dir::AbstractString)
-    try extract_tarball(tarball, dir)
+extract(tarball::Union{AbstractString, IO}, dir::AbstractString) =
+    extract(true_predicate, tarball, dir)
+extract(tarball::Union{AbstractString, IO}) =
+    extract(true_predicate, tarball)
+
+function extract_tarball_with_cleanup(
+    predicate::Function,
+    tarball::Union{AbstractString, IO},
+    dir::AbstractString,
+)
+    try extract_tarball(predicate, tarball, dir)
     catch
         rm(dir, force=true, recursive=true)
         rethrow()
