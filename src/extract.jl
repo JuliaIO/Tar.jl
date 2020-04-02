@@ -13,22 +13,24 @@ function list_tarball(
         hdr === nothing && break
         strict && check_header(hdr)
         push!(headers, hdr)
-        skip(tar, 512 * ((hdr.size + 511) ÷ 512))
+        skip_data(tar, hdr.size)
     end
     return headers
 end
 
 function extract_tarball(
+    predicate::Function,
     tarball::AbstractString,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
 )
     open(tarball) do tar
-        extract_tarball(tar, root, buf=buf)
+        extract_tarball(predicate, tar, root, buf=buf)
     end
 end
 
 function extract_tarball(
+    predicate::Function,
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
@@ -37,6 +39,11 @@ function extract_tarball(
     while !eof(tar)
         hdr = read_header(tar, buf=buf)
         hdr === nothing && break
+        # check if we should extract or skip
+        if !predicate(hdr)
+            skip_data(tar, hdr.size)
+            continue
+        end
         check_header(hdr)
         # normalize path and check for symlink attacks
         path = ""
@@ -44,9 +51,9 @@ function extract_tarball(
         for part in split(hdr.path, '/')
             (isempty(part) || part == ".") && continue
             path in links && error("""
-            refusing to extract path with symlink prefix, possible attack
+            Refusing to extract path with symlink prefix, possible attack
              * symlink prefix: $(repr(path))
-             * path: $(repr(hdr.path))
+             * extracted path: $(repr(hdr.path))
             """)
             path = isempty(path) ? part : "$path/$part"
             push!(parts, part)
@@ -230,6 +237,10 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
         error("unknown version string for tar file: $(repr(version))")
     path = isempty(prefix) ? name : "$prefix/$name"
     return Header(path, to_symbolic_type(type), mode, size, link)
+end
+
+function skip_data(tar::IO, size::Integer)
+    skip(tar, 512 * ((size + 511) ÷ 512))
 end
 
 index_range(offset::Int, length::Int) = offset .+ (1:length)

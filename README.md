@@ -117,7 +117,7 @@ None of these are exported, however: the recommended usage is to do `import Tar`
 
     create([ predicate, ] dir, [ tarball ]) -> tarball
 
-* `predicate :: Function`
+* `predicate :: String --> Bool`
 * `dir       :: AbstractString`
 * `tarball   :: Union{AbstractString, IO}`
 
@@ -134,8 +134,9 @@ will be included in the archive.
 
 ### Tar.extract
 
-    extract(tarball, [ dir ]) -> dir
+    extract([ predicate, ] tarball, [ dir ]) -> dir
 
+* `predicate :: Header --> Bool`
 * `tarball   :: Union{AbstractString, IO}`
 * `dir       :: AbstractString`
 
@@ -145,6 +146,12 @@ archive contents will be read from that IO stream. The archive is extracted to
 `dir` which must either be an existing empty directory or a non-existent path
 which can be created as a new directory. If `dir` is not specified, the archive
 is extracted into a temporary directory which is returned by `extract`.
+
+If a `predicate` function is passed, it is called on each `Header` object that
+is encountered while extracting `tarball` and the entry is only extracted if the
+`predicate(hdr)` is true. This can be used to selectively extract only parts of
+an archive, to skip entries that cause `extract` to throw an error, or to record
+what is extracted during the extraction process.
 
 ### Tar.list
 

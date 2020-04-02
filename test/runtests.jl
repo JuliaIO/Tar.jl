@@ -77,7 +77,7 @@ end
 end
 
 function check_tree_hash(hash::Vector{UInt8}, root::AbstractString)
-    @test tree_hash(root) == hash
+    @test string(tree_hash(root)) == string(hash)
     rm(root, recursive=true)
 end
 
@@ -408,4 +408,31 @@ end
         Tar.extract(io, dir)
     end
     rm(dir, recursive=true)
+
+    # generate a version of dir with .skip entries
+    dir = make_test_dir(true)
+    tarball = Tar.create(dir)
+    rm(dir, recursive=true)
+
+    # predicate to skip paths ending in `.skip`
+    predicate = hdr -> !any(splitext(p)[2] == ".skip" for p in split(hdr.path, '/'))
+
+    # extract(predicate::Function, tarball::String)
+    dir = Tar.extract(predicate, tarball)
+    check_tree_hash(hash, dir)
+    # extract(predicate::Function, tarball::String, dir::String)
+    dir = tempname()
+    Tar.extract(predicate, tarball, dir)
+    check_tree_hash(hash, dir)
+    # extract(predicate::Function, tarball::IO)
+    dir = open(tarball) do io
+        Tar.extract(predicate, io)
+    end
+    check_tree_hash(hash, dir)
+    # extract(tarball::IO, dir::String) — non-existent
+    dir = tempname()
+    open(tarball) do io
+        Tar.extract(predicate, io, dir)
+    end
+    check_tree_hash(hash, dir)
 end
