@@ -1,3 +1,9 @@
+@static if VERSION < v"1.4.0-DEV"
+    view_read!(io, buf::SubArray{UInt8}) = readbytes!(io, buf, sizeof(buf))
+else
+    view_read!(io, buf::SubArray{UInt8}) = read!(io, buf)
+end
+
 function list_tarball(
     tar::IO;
     raw::Bool = false,
@@ -209,7 +215,7 @@ end
 
 function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE))
     header_view = view(buf, 1:512)
-    read!(io, header_view)
+    view_read!(io, header_view)
     all(iszero, header_view) && return nothing
     name    = read_header_str(header_view, 0, 100)
     mode    = read_header_int(header_view, 100, 8)
