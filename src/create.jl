@@ -4,9 +4,6 @@ else
     unsorted_readdir(args...) = readdir(args...; sort=false)
 end
 
-# 2 MiB to take advantage of THP if enabled
-const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
-
 function write_tarball(
     predicate::Function,
     out::IO,

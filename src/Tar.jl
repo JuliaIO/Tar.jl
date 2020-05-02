@@ -8,6 +8,9 @@ function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
     end
 end
 
+# 2 MiB to take advantage of THP if enabled
+const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
+
 include("header.jl")
 include("create.jl")
 include("extract.jl")
