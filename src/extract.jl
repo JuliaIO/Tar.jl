@@ -1,8 +1,14 @@
+@static if VERSION < v"1.4.0-DEV"
+    view_read!(io, buf::SubArray{UInt8}) = readbytes!(io, buf, sizeof(buf))
+else
+    view_read!(io, buf::SubArray{UInt8}) = read!(io, buf)
+end
+
 function list_tarball(
     tar::IO;
     raw::Bool = false,
     strict::Bool = !raw,
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     raw && strict &&
         error("`raw=true` and `strict=true` options are incompatible")
@@ -22,7 +28,7 @@ function extract_tarball(
     predicate::Function,
     tarball::AbstractString,
     root::String;
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     open(tarball) do tar
         extract_tarball(predicate, tar, root, buf=buf)
@@ -33,7 +39,7 @@ function extract_tarball(
     predicate::Function,
     tar::IO,
     root::String;
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     links = Set{String}()
     while !eof(tar)
@@ -117,7 +123,7 @@ const IGNORED_EXTENDED_LOCAL_HEADERS = [
     "uname",
 ]
 
-function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
+function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE))
     hdr = read_standard_header(io, buf=buf)
     hdr === nothing && return nothing
     size = path = link = nothing
@@ -167,7 +173,7 @@ using Base.Checked: mul_with_overflow, add_with_overflow
 function read_extended_metadata(
     io::IO,
     size::Integer;
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     n = readbytes!(io, buf, size)
     n < size && "premature end of tar file"
@@ -207,30 +213,26 @@ function read_extended_metadata(
     return metadata
 end
 
-function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 512))
-    resize!(buf, 512)
-    read!(io, buf)
-    all(iszero, buf) && return nothing
-    n = length(buf)
-    n == 0 && error("premature end of tar file")
-    n < 512 && error("incomplete trailing block with length $n < 512")
-    @assert n == 512
-    name    = read_header_str(buf, 0, 100)
-    mode    = read_header_int(buf, 100, 8)
-    size    = buf[124+1] & 0x80 == 0 ?
-              read_header_int(buf, 124, 12) :
-              read_header_bin(buf, 124, 12)
-    chksum  = read_header_int(buf, 148, 8)
-    type    = read_header_chr(buf, 156)
-    link    = read_header_str(buf, 157, 100)
-    magic   = read_header_str(buf, 257, 6)
-    version = read_header_str(buf, 263, 2)
-    prefix  = read_header_str(buf, 345, 155)
+function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE))
+    header_view = view(buf, 1:512)
+    view_read!(io, header_view)
+    all(iszero, header_view) && return nothing
+    name    = read_header_str(header_view, 0, 100)
+    mode    = read_header_int(header_view, 100, 8)
+    size    = header_view[124+1] & 0x80 == 0 ?
+              read_header_int(header_view, 124, 12) :
+              read_header_bin(header_view, 124, 12)
+    chksum  = read_header_int(header_view, 148, 8)
+    type    = read_header_chr(header_view, 156)
+    link    = read_header_str(header_view, 157, 100)
+    magic   = read_header_str(header_view, 257, 6)
+    version = read_header_str(header_view, 263, 2)
+    prefix  = read_header_str(header_view, 345, 155)
     # check various fields
-    buf[index_range(148, 8)] .= ' ' # fill checksum field with spaces
-    buf_sum = sum(buf)
+    header_view[index_range(148, 8)] .= ' ' # fill checksum field with spaces
+    buf_sum = sum(header_view)
     chksum == buf_sum ||
-        error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(buf)))")
+        error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(header_view)))")
     occursin(r"^ustar\s*$", magic) ||
         error("unknown magic string for tar file: $(repr(magic))")
     occursin(r"^0* *$", version) ||
@@ -239,15 +241,16 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
     return Header(path, to_symbolic_type(type), mode, size, link)
 end
 
+round_up(size) = 512 * ((size + 511) ÷ 512)
 function skip_data(tar::IO, size::Integer)
-    skip(tar, 512 * ((size + 511) ÷ 512))
+    skip(tar, round_up(size))
 end
 
 index_range(offset::Int, length::Int) = offset .+ (1:length)
 
-read_header_chr(buf::Vector{UInt8}, offset::Int) = Char(buf[offset+1])
+read_header_chr(buf::AbstractVector{UInt8}, offset::Int) = Char(buf[offset+1])
 
-function read_header_str(buf::Vector{UInt8}, offset::Int, length::Int)
+function read_header_str(buf::AbstractVector{UInt8}, offset::Int, length::Int)
     r = index_range(offset, length)
     for i in r
         byte = buf[i]
@@ -256,7 +259,7 @@ function read_header_str(buf::Vector{UInt8}, offset::Int, length::Int)
     return String(buf[r])
 end
 
-function read_header_int(buf::Vector{UInt8}, offset::Int, length::Int)
+function read_header_int(buf::AbstractVector{UInt8}, offset::Int, length::Int)
     n = UInt64(0)
     for i in index_range(offset, length)
         byte = buf[i]
@@ -269,7 +272,7 @@ function read_header_int(buf::Vector{UInt8}, offset::Int, length::Int)
     return n
 end
 
-function read_header_bin(buf::Vector{UInt8}, offset::Int, length::Int)
+function read_header_bin(buf::AbstractVector{UInt8}, offset::Int, length::Int)
     n = UInt64(0)
     for i in index_range(offset, length)
         n <<= 8
@@ -282,16 +285,13 @@ function read_data(
     tar::IO,
     file::IO;
     size::Integer,
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )::Nothing
-    resize!(buf, 512)
     while size > 0
-        r = readbytes!(tar, buf)
+        r = readbytes!(tar, buf, size < sizeof(buf) ? round_up(size) : sizeof(buf))
         r < 512 && eof(io) && error("premature end of tar file")
-        size < 512 && resize!(buf, size)
-        size -= write(file, buf)
+        size -= write(file, view(buf, 1:min(r, size)))
     end
-    resize!(buf, 512)
     @assert size == 0
     return
 end
@@ -300,7 +300,7 @@ function read_data(
     tar::IO,
     file::String;
     size::Integer,
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )::Nothing
     open(file, write=true) do file′
         read_data(tar, file′, size=size, buf=buf)
@@ -310,7 +310,7 @@ end
 function read_data(
     tar::IO;
     size::Integer,
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )::String
     io = IOBuffer(sizehint=size)
     read_data(tar, io, size=size, buf=buf)

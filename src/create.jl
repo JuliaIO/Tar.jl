@@ -9,7 +9,7 @@ function write_tarball(
     out::IO,
     sys_path::String,      # path in the filesystem
     tar_path::String = ""; # path in the tarball
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     w = 0
     st = lstat(sys_path)
@@ -55,7 +55,7 @@ function write_tarball(
     out::IO,
     sys_path::String,
     tar_path::String = "";
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     write_tarball(p->true, out, sys_path, tar_path, buf=buf)
 end
@@ -63,7 +63,7 @@ end
 function write_header(
     out::IO,
     hdr::Header;
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     # extract values
     path = hdr.path
@@ -111,7 +111,7 @@ function write_extended_header(
     out::IO,
     metadata::Vector{Pair{String,String}};
     type::Symbol = :x, # default: non-global extended header
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     type in (:x, :g) ||
         throw(ArgumentError("invalid type flag for extended header: $(repr(type))"))
@@ -140,7 +140,7 @@ function write_standard_header(
     hdr::Header;
     name::AbstractString = "",
     prefix::AbstractString = "",
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     name = String(name)
     prefix = String(prefix)
@@ -169,8 +169,8 @@ function write_standard_header(
         throw(ArgumentError("non-ASCII type flag value: $(repr(type))"))
 
     # construct header block
-    resize!(buf, 512)
-    h = IOBuffer(fill!(buf, 0x00), write=true, truncate=false)
+    header_view = view(buf, 1:512)
+    h = IOBuffer(fill!(header_view, 0x00), write=true, truncate=false)
     write(h, name)              # name
     seek(h, 100)
     write(h, "$m \0")           # mode
@@ -204,14 +204,14 @@ function write_standard_header(
     write(h, prefix)            # prefix
 
     # fix the checksum
-    c = string(sum(buf), base=8, pad=6)
+    c = string(sum(header_view), base=8, pad=6)
     @assert ncodeunits(c) ≤ 6
     seek(h, 148)
     write(h, "$c\0 ")
     @assert position(h) == 156
 
     # write header
-    w = write(out, buf)
+    w = write(out, header_view)
     @assert w == 512
     return w
 end
@@ -220,14 +220,23 @@ function write_data(
     tar::IO,
     file::IO;
     size::Integer,
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    resize!(buf, 512)
     w = s = 0
+    @assert sizeof(buf) % 512 == 0
     while !eof(file)
         s += n = readbytes!(file, buf)
-        n < 512 && (buf[n+1:512] .= 0)
-        w += write(tar, buf)
+        if n < sizeof(buf)
+            r = n % 512
+            if r != 0
+                pad = n - r + 512
+                buf[n+1:pad] .= 0
+                n = pad
+            end
+            w += write(tar, view(buf, 1:n))
+        else
+            w += write(tar, buf)
+        end
     end
     s == size || error("""
     data did not have the expected size:
@@ -242,7 +251,7 @@ function write_data(
     tar::IO,
     file::String;
     size::Integer,
-    buf::Vector{UInt8} = Vector{UInt8}(undef, 512),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     open(file) do file′
         write_data(tar, file′, size=size, buf=buf)
