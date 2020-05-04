@@ -1,3 +1,5 @@
+using SHA
+
 @static if VERSION < v"1.4.0-DEV"
     view_read!(io, buf::SubArray{UInt8}) = readbytes!(io, buf, sizeof(buf))
 else
@@ -315,4 +317,133 @@ function read_data(
     io = IOBuffer(sizehint=size)
     read_data(tar, io, size=size, buf=buf)
     return String(take!(io))
+end
+
+
+function treehash_tarball(
+    tarball::AbstractString;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    open(tarball) do tar
+        treehash_tarball(tar, buf=buf)
+    end
+end
+
+function treehash_tarball(
+    tar::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    links = Set{String}()
+    entries = Dict()
+    while !eof(tar)
+        hdr = read_header(tar, buf=buf)
+        hdr === nothing && break
+        check_header(hdr)
+        # normalize path and check for symlink attacks
+        path = ""
+        parts = String[]
+        for part in split(hdr.path, '/')
+            (isempty(part) || part == ".") && continue
+            path in links && error("""
+            Refusing to extract path with symlink prefix, possible attack
+             * symlink prefix: $(repr(path))
+             * extracted path: $(repr(hdr.path))
+            """)
+            path = isempty(path) ? part : "$path/$part"
+            push!(parts, part)
+        end
+        if hdr.type == :symlink
+            push!(links, path)
+        else
+            delete!(links, path)
+        end
+        # get the file system version of the path
+        sys_path = joinpath(".", parts...)
+        entry = mkentry!(entries, parts[1:end-1])
+
+        if hdr.type == :directory
+            # nothing
+        elseif hdr.type == :symlink
+            hash = link_hash(last(parts), hdr.link)
+            entry[last(parts)] = (hash, "120000")
+        elseif hdr.type == :file
+            hash = file_hash(last(parts), hdr.size, tar)
+            if iszero(hdr.mode & 0o100)
+                entry[last(parts)] = (hash, "100644")
+            else
+                # Executable
+                entry[last(parts)] = (hash, "100755")
+            end
+        else # should already be caught by check_header
+            error("unsupported tarball entry type: $(hdr.type)")
+        end
+    end
+    hash, isemptydir = tree_hash(entries)
+    return hash
+end
+
+function mkentry!(entries, parts)
+    isempty(parts) && return entries
+    return mkentry!(get!(entries, parts[1], Dict()), parts[2:end])
+end
+
+function tree_hash(file_hashes::Dict; HashType = SHA.SHA1_CTX)
+    entries = Tuple{String, Vector{UInt8}, String}[]
+    for (name, v) in file_hashes
+        if v isa Dict
+            hash, isemptydir = tree_hash(v, HashType = HashType)
+            mode = "40000"
+        else
+            hash, mode = v
+            isemptydir = false
+        end
+        if !isemptydir
+            push!(entries, (name, hash, mode))
+        end
+    end
+
+    # Sort entries by name (with trailing slashes for directories)
+    sort!(entries, by = ((name, hash, mode),) -> mode == "040000" ? name*"/" : name)
+
+    content_size = 0
+    for (n, h, m) in entries
+        content_size += length(m) + 1 + sizeof(n) + 1 + 20
+    end
+
+    # Return the hash of these entries
+    ctx = HashType()
+    SHA.update!(ctx, Vector{UInt8}("tree $(content_size)\0"))
+    for (name, hash, mode) in entries
+        SHA.update!(ctx, Vector{UInt8}("$(mode) $(name)\0"))
+        SHA.update!(ctx, hash)
+    end
+    return SHA.digest!(ctx), isempty(entries)
+end
+
+function file_hash(filename, datalen, io, HashType = SHA.SHA1_CTX)
+    ctx = HashType()
+
+    # First, the header
+    SHA.update!(ctx, Vector{UInt8}("blob $(datalen)\0"))
+
+    # Next, read data in in chunks of 4KB
+    buff = Vector{UInt8}(undef, 4*1024)
+
+    pad = mod(-datalen, 512)
+    while datalen > 0
+        num_read = readbytes!(io, buff, min(datalen, length(buff)))
+        update!(ctx, buff, num_read)
+        datalen -= num_read
+    end
+    readbytes!(io, buff, pad)
+
+    # Finish it off and return the digest!
+    return SHA.digest!(ctx)
+end
+
+function link_hash(filename, link, HashType = SHA.SHA1_CTX)
+    ctx = HashType()
+    SHA.update!(ctx, Vector{UInt8}("blob $(length(link))\0"))
+    update!(ctx, Vector{UInt8}(link))
+    return SHA.digest!(ctx)
 end
