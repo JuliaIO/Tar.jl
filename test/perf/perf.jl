@@ -2,36 +2,36 @@ using Random, Tar, Printf, BenchmarkTools
 import TranscodingStreams: TranscodingStream
 import CodecZlib: GzipCompressor
 
-function fill_tree!(root::String, depth::Int, max_dirs::Int, max_files::Int, min_size::Int, max_size::Int)
+function fill_tree!(root::String, depth::Int, max_dirs::Int, num_files::Int, file_size::Int)
     if depth <= 0
         return
     end
 
     # First, create files
-    for file_idx in 1:rand(1:max_files)
+    for file_idx in 1:num_files
         fname = randstring(rand(5:20))
         open(joinpath(root, fname), "w") do io
-            write(io, rand(UInt8, rand(min_size:max_size)))
+            write(io, rand(UInt8, file_size))
         end
     end
 
     # Next, create directories and recurse
-    for dir_idx in 1:rand(1:max_dirs)
+    for dir_idx in 1:max_dirs
         dname = joinpath(root, randstring(rand(5:20)))
         mkdir(dname)
-        fill_tree!(dname, depth-1, max_dirs, max_files, min_size, max_size)
+        fill_tree!(dname, depth-1, max_dirs, num_files, file_size)
     end
 end
 
 
-function many_small_files(dir, depth=3, max_dirs=3, max_files=10000, min_size=100, max_size=1000)
-    fill_tree!(dir, depth, max_dirs, max_files, min_size, max_size)
+function many_small_files(dir, depth=3, max_dirs=3, num_files=1000, file_size=1000)
+    fill_tree!(dir, depth, max_dirs, num_files, file_size)
 end
-function some_medium_files(dir, depth=2, max_dirs=3, max_files=100, min_size=100*1000, max_size=5*1000*1000)
-    fill_tree!(dir, depth, max_dirs, max_files, min_size, max_size)
+function some_medium_files(dir, depth=2, max_dirs=3, num_files=20, file_size=5*1000*1000)
+    fill_tree!(dir, depth, max_dirs, num_files, file_size)
 end
-function few_large_files(dir, depth=1, max_dirs=2, max_files=5, min_size=50*1000*1000, max_size=200*1000*1000)
-    fill_tree!(dir, depth, max_dirs, max_files, min_size, max_size)
+function few_large_files(dir, depth=1, max_dirs=2, num_files=3, file_size=100*1000*1000)
+    fill_tree!(dir, depth, max_dirs, num_files, file_size)
 end
 
 function time_tar(genfunc::Function; kwargs...)
