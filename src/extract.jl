@@ -320,16 +320,16 @@ function read_data(
 end
 
 
-function treehash_tarball(
+function tree_hash_tarball(
     tarball::AbstractString;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     open(tarball) do tar
-        treehash_tarball(tar, buf=buf)
+        tree_hash_tarball(tar, buf=buf)
     end
 end
 
-function treehash_tarball(
+function tree_hash_tarball(
     tar::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
@@ -382,6 +382,8 @@ function treehash_tarball(
     return hash
 end
 
+# Works much like `mkpath` but makes nested dictionaries instead of
+# nested directories. Returns the innermost dictionary.
 function mkentry!(entries, parts)
     isempty(parts) && return entries
     return mkentry!(get!(entries, parts[1], Dict()), parts[2:end])
@@ -432,10 +434,10 @@ function file_hash(filename, datalen, io, HashType = SHA.SHA1_CTX)
     pad = mod(-datalen, 512)
     while datalen > 0
         num_read = readbytes!(io, buff, min(datalen, length(buff)))
-        update!(ctx, buff, num_read)
+        SHA.update!(ctx, buff, num_read)
         datalen -= num_read
     end
-    readbytes!(io, buff, pad)
+    skip(io, pad)
 
     # Finish it off and return the digest!
     return SHA.digest!(ctx)
@@ -444,6 +446,6 @@ end
 function link_hash(filename, link, HashType = SHA.SHA1_CTX)
     ctx = HashType()
     SHA.update!(ctx, Vector{UInt8}("blob $(length(link))\0"))
-    update!(ctx, Vector{UInt8}(link))
+    SHA.update!(ctx, Vector{UInt8}(link))
     return SHA.digest!(ctx)
 end

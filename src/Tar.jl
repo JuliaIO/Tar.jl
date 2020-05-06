@@ -159,6 +159,22 @@ function extract_tarball_with_cleanup(
     end
 end
 
+"""
+    tree_hash(tarball) -> Vector{UInt8}
+
+        tarball   :: Union{AbstractString, IO}
+
+Calculate the git tree hash of the files and directory structure in a
+tar archive ("tarball") located at the path `tarball`. If `tarball` is
+an IO object instead of a path, then the archive contents will be read
+from that IO stream. The tree hash is computed without extracting the
+files to disk.
+"""
+function tree_hash(tarball::Union{AbstractString, IO})
+    tree_hash_tarball_check(tarball)
+    return tree_hash_tarball(tarball)
+end
+
 ## error checking utility functions
 
 create_dir_check(dir::AbstractString) = isdir(dir) ||
@@ -179,5 +195,10 @@ function extract_dir_check(dir::AbstractString)
     isdir(st) && !isempty(readdir(dir)) &&
         error("directory not empty: $dir\n USAGE: extract(tarball, [dir])")
 end
+
+tree_hash_tarball_check(tarball::AbstractString) = isfile(tarball) ||
+    error("not a file: $tarball\nUSAGE: tree_hash(tarball)")
+
+tree_hash_tarball_check(tarball::IO) = nothing
 
 end # module

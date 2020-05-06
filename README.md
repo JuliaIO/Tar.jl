@@ -102,11 +102,12 @@ Two _identical_ file trees will always produce identical tarballs, however, and 
 
 ## API & Usage
 
-The public API of `Tar` includes three functions and one type:
+The public API of `Tar` includes four functions and one type:
 
 * `create` — creates a tarball from an on-disk file tree
 * `extract` — extracts a tarball to an on-disk file tree
 * `list` — lists the contents of a tarball as a vector of `Header` objects
+* `tree_hash` - calculates the git tree hash of a tarball
 * `Header` — struct representing metadata that `Tar` considers important in a TAR entry
 
 None of these are exported, however: the recommended usage is to do `import Tar` and then access all of these names fully qualified as `Tar.create`, `Tar.extract` and so on.
@@ -152,6 +153,18 @@ is encountered while extracting `tarball` and the entry is only extracted if the
 `predicate(hdr)` is true. This can be used to selectively extract only parts of
 an archive, to skip entries that cause `extract` to throw an error, or to record
 what is extracted during the extraction process.
+
+### Tar.tree_hash
+
+    tree_hash(tarball) -> Vector{UInt8}
+
+* `tarball`   :: Union{AbstractString, IO}
+
+Calculate the git tree hash of the files and directory structure in a
+tar archive ("tarball") located at the path `tarball`. If `tarball` is
+an IO object instead of a path, then the archive contents will be read
+from that IO stream. The tree hash is computed without extracting the
+files to disk.
 
 ### Tar.list
 

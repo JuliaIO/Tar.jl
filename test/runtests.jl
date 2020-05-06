@@ -138,6 +138,9 @@ end
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
+    @testset "Tar.tree_hash" begin
+        @test Tar.tree_hash(tarball) == hash
+    end
     rm(tarball)
 end
 
