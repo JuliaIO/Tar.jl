@@ -62,17 +62,43 @@ function make_test_tarball(tar_create::Function = Tar.create)
     return tarball, hash
 end
 
+const empty_tree_sha1 =
+    "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+const empty_tree_sha256 =
+    "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
+
+function test_empty_hashes(tarball::AbstractString)
+    @test empty_tree_sha1 == Tar.tree_hash(tarball, skip_empty=true)
+    @test empty_tree_sha1 == Tar.tree_hash(tarball, skip_empty=false)
+    @test empty_tree_sha1 == Tar.tree_hash(tarball, algorithm="git-sha1")
+    @test empty_tree_sha256 == Tar.tree_hash(tarball, algorithm="git-sha256")
+    open(tarball) do io
+        @test empty_tree_sha1 == Tar.tree_hash(io, skip_empty=true)
+    end
+    open(tarball) do io
+        @test empty_tree_sha1 == Tar.tree_hash(io, skip_empty=false)
+    end
+    open(tarball) do io
+        @test empty_tree_sha1 == Tar.tree_hash(io, algorithm="git-sha1")
+    end
+    open(tarball) do io
+        @test empty_tree_sha256 == Tar.tree_hash(io, algorithm="git-sha256")
+    end
+end
+
 @testset "empty tarball" begin
     dir = mktempdir()
     tarball = Tar.create(dir)
     rm(dir, recursive=true)
     @test Tar.list(tarball) == [Tar.Header(".", :directory, 0o755, 0, "")]
+    test_empty_hashes(tarball)
     dir = Tar.extract(tarball)
     @test isempty(readdir(dir))
     rm(dir, recursive=true)
     open(tarball, append=true) do io
         write(io, zeros(UInt8, 512))
     end
+    test_empty_hashes(tarball)
     dir = Tar.extract(tarball)
     @test isempty(readdir(dir))
     rm(dir, recursive=true)
@@ -85,6 +111,28 @@ end
 
 @testset "test tarball" begin
     tarball, hash = make_test_tarball()
+    @testset "Tar.tree_hash" begin
+        @test Tar.tree_hash(tarball, skip_empty=true) == hash
+        open(tarball) do io
+            @test Tar.tree_hash(io, skip_empty=true) == hash
+        end
+        @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tarball)
+        @test empty_tree_sha1 ==
+            Tar.tree_hash(hdr->false, tarball, algorithm="git-sha1")
+        @test empty_tree_sha256 ==
+            Tar.tree_hash(hdr->false, tarball, algorithm="git-sha256")
+        open(tarball) do io
+            @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tarball)
+        end
+        open(tarball) do io
+            @test empty_tree_sha1 ==
+                Tar.tree_hash(hdr->false, tarball, algorithm="git-sha1")
+        end
+        open(tarball) do io
+            @test empty_tree_sha256 ==
+                Tar.tree_hash(hdr->false, tarball, algorithm="git-sha256")
+        end
+    end
     @testset "Tar.list & check properties" begin
         headers = Tar.list(tarball)
         @test issorted(headers, by = hdr -> hdr.path)
@@ -154,6 +202,7 @@ if !Sys.iswindows()
             return tarball
         end
         # TODO: check that extended headers contain `mtime` etc.
+        @test Tar.tree_hash(tarball, skip_empty=true) == hash
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
@@ -169,6 +218,7 @@ if !Sys.iswindows()
         @test any(h.path == "././@LongLink" && h.type == :L for h in hdrs)
         @test any(h.path == "././@LongLink" && h.type == :K for h in hdrs)
         # test that Tar can extract these GNU entries correctly
+        @test Tar.tree_hash(tarball, skip_empty=true) == hash
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
@@ -182,6 +232,7 @@ end
     Tar.write_header(io, Tar.Header("link/target", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
+    @test_throws ErrorException Tar.tree_hash(tarball)
     rm(tarball)
     # attempt to write through relative link out of root
     tarball, io = mktemp()
@@ -189,6 +240,7 @@ end
     Tar.write_header(io, Tar.Header("link/attack", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
+    @test_throws ErrorException Tar.tree_hash(tarball)
     rm(tarball)
     # attempt to write through absolute link
     tarball, io = mktemp()
@@ -196,6 +248,7 @@ end
     Tar.write_header(io, Tar.Header("link/attack", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
+    @test_throws ErrorException Tar.tree_hash(tarball)
     rm(tarball)
     # same attack with some obfuscation
     tarball, io = mktemp()
@@ -203,6 +256,7 @@ end
     Tar.write_header(io, Tar.Header("./link/attack", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
+    @test_throws ErrorException Tar.tree_hash(tarball)
     rm(tarball)
     # same attack with different obfuscation
     tarball, io = mktemp()
@@ -210,6 +264,7 @@ end
     Tar.write_header(io, Tar.Header("dir/../link/attack", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
+    @test_throws ErrorException Tar.tree_hash(tarball)
     rm(tarball)
 end
 
@@ -221,12 +276,15 @@ end
         Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, "/tmp"))
         Tar.write_header(io, Tar.Header("path", :file, 0o644, 0, ""))
         close(io)
+        hash = Tar.tree_hash(tarball₁)
         tree₁ = Tar.extract(tarball₁)
+        @test hash == tree_hash(tree₁)
         tarball₂, io = mktemp()
         Tar.write_header(io, Tar.Header("path", :file, 0o644, 0, ""))
         close(io)
+        @test hash == Tar.tree_hash(tarball₂)
         tree₂ = Tar.extract(tarball₂)
-        @test tree_hash(tree₁) == tree_hash(tree₂)
+        @test hash == tree_hash(tree₂)
         rm(tree₁, recursive=true)
         rm(tree₂, recursive=true)
         rm(tarball₁)
@@ -239,12 +297,15 @@ end
         Tar.write_header(io, Tar.Header("path", :directory, 0o755, 0, ""))
         Tar.write_header(io, Tar.Header("path/file", :file, 0o644, 0, ""))
         close(io)
+        hash = Tar.tree_hash(tarball₁)
         tree₁ = Tar.extract(tarball₁)
+        @test hash == tree_hash(tree₁)
         tarball₂, io = mktemp()
         Tar.write_header(io, Tar.Header("path/file", :file, 0o644, 0, ""))
         close(io)
+        @test hash == Tar.tree_hash(tarball₂)
         tree₂ = Tar.extract(tarball₂)
-        @test tree_hash(tree₁) == tree_hash(tree₂)
+        @test hash == tree_hash(tree₂)
         rm(tree₁, recursive=true)
         rm(tree₂, recursive=true)
         rm(tarball₁)
@@ -358,6 +419,8 @@ end
     hash = tree_hash(dir)
     tarball = Tar.create(dir)
     rm(dir, recursive=true)
+    @test hash == Tar.tree_hash(tarball, skip_empty=true)
+    @test hash != Tar.tree_hash(tarball, skip_empty=false)
 
     # extract(tarball::String)
     dir = Tar.extract(tarball)
@@ -415,9 +478,13 @@ end
     dir = make_test_dir(true)
     tarball = Tar.create(dir)
     rm(dir, recursive=true)
+    @test hash != Tar.tree_hash(tarball, skip_empty=true)
+    @test hash != Tar.tree_hash(tarball, skip_empty=false)
 
     # predicate to skip paths ending in `.skip`
     predicate = hdr -> !any(splitext(p)[2] == ".skip" for p in split(hdr.path, '/'))
+    @test hash == Tar.tree_hash(predicate, tarball, skip_empty=true)
+    @test hash != Tar.tree_hash(predicate, tarball, skip_empty=false)
 
     # extract(predicate::Function, tarball::String)
     dir = Tar.extract(predicate, tarball)

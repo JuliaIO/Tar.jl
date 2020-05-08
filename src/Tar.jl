@@ -159,6 +159,79 @@ function extract_tarball_with_cleanup(
     end
 end
 
+"""
+    tree_hash([ predicate, ] tarball;
+              [ algorithm = "git-sha1", ]
+              [ skip_empty = false ]) -> hash::String
+
+        predicate  :: Header --> Bool
+        tarball    :: Union{AbstractString, IO}
+        algorithm  :: AbstractString
+        skip_empty :: Bool
+
+Compute a tree hash value for the file tree that the tarball contains. By
+default, this uses git's tree hashing algorigthm with the SHA1 secure hash
+function (like current versions of git). This means that for any tarball whose
+file tree git can represent—i.e. one with only files, symlinks and non-empty
+directories—the hash value computed by this function will be the same as the
+hash value git would compute for that file tree. Note that tarballs can
+represent file trees with empty directories, which git cannot store, and this
+function can generate hashes for those, which will, by default (see `skip_empty`
+below for how to change this behavior), differ from the hash of a tarball which
+omits those empty directories. In short, the hash function agrees with git on
+all trees which git can represent, but extends (in a consistent way) the domain
+of hashable trees to other trees which git cannot represent.
+
+If a `predicate` function is passed, it is called on each `Header` object that
+is encountered while processing `tarball` and an entry is only hashed if
+`predicate(hdr)` is true. This can be used to selectively hash only parts of an
+archive, to skip entries that cause `extract` to throw an error, or to record
+what is extracted during the hashing process.
+
+Currently supported values for `algorithm` are `git-sha1` (the default) and
+`git-sha256`, which uses the same basic algorithm as `git-sha1` but replaces the
+SHA1 hash function with SHA2-256, the hash function that git will transition to
+using in the future (due to known attacks on SHA1). Support for other file tree
+hashing algorithms may be added in the future.
+
+The `skip_empty` option controls whether directories in the tarball which
+recursiviely contain no files or symlinks are included in the hash or ignored.
+In general, if you are hashing the content of a tarball or a file tree, you care
+about all directories, not just non-empty ones, so including these in the
+computed hash is the default. So why does this function even provide the option
+to skip empty directories? Because git refuses to store empty directories and
+will ignore them if you try to add them to a repo. So if you compute a reference
+tree hash by by adding files to a git repo and then asking git for the tree
+hash, the hash value that you get will match the hash value computed by
+`tree_hash` with `skip_empty=true`. In other words, this option allows
+`tree_hash` to emulate how git would hash a tree with empty directories. If you
+are hashing trees that may contain empty directories (i.e. do not come from a
+git repo), however, it is recommended that you hash them using a tool (such as
+this one) that does not ignore empty directories.
+"""
+function tree_hash(
+    predicate::Function,
+    tarball::Union{AbstractString, IO};
+    algorithm::AbstractString = "git-sha1",
+    skip_empty::Bool = false,
+)
+    HashType =
+        algorithm == "git-sha1"     ? SHA.SHA1_CTX :
+        algorithm == "git-sha256"   ? SHA.SHA256_CTX :
+            error("invalid tree hashing algorithm: $algorithm")
+
+    tree_hash_tarball_check(tarball)
+    git_tree_hash(predicate, tarball, HashType, skip_empty)
+end
+
+function tree_hash(
+    tarball::Union{AbstractString, IO};
+    algorithm::AbstractString = "git-sha1",
+    skip_empty::Bool = false,
+)
+    tree_hash(true_predicate, tarball, algorithm=algorithm, skip_empty=skip_empty)
+end
+
 ## error checking utility functions
 
 create_dir_check(dir::AbstractString) = isdir(dir) ||
@@ -194,5 +267,13 @@ function extract_dir_check(dir::AbstractString)
         USAGE: extract([predicate,] tarball, [dir])
         """)
 end
+
+tree_hash_tarball_check(tarball::AbstractString) = isfile(tarball) ||
+    error("""
+    not a file: $tarball
+    USAGE: tree_hash([predicate,] tarball)
+    """)
+
+tree_hash_tarball_check(tarball::IO) = nothing
 
 end # module
