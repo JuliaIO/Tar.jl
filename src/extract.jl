@@ -48,7 +48,7 @@ function extract_tarball(
         elseif hdr.type == :symlink
             symlink(hdr.link, sys_path)
         elseif hdr.type == :file
-            read_data(tar, sys_path, size=hdr.size)
+            read_data(tar, sys_path, size=hdr.size, buf=buf)
             # set executable bit if necessary
             if !iszero(hdr.mode & 0o100)
                 mode = filemode(sys_path)
@@ -315,7 +315,7 @@ end
 
 function read_data(
     tar::IO,
-    file::String;
+    file::AbstractString;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )::Nothing
