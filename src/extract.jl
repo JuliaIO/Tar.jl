@@ -26,51 +26,13 @@ end
 
 function extract_tarball(
     predicate::Function,
-    tarball::AbstractString,
+    tarball::Union{AbstractString, IO},
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    open(tarball) do tar
-        extract_tarball(predicate, tar, root, buf=buf)
-    end
-end
-
-function extract_tarball(
-    predicate::Function,
-    tar::IO,
-    root::String;
-    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
-    links = Set{String}()
-    while !eof(tar)
-        hdr = read_header(tar, buf=buf)
-        hdr === nothing && break
-        # check if we should extract or skip
-        if !predicate(hdr)
-            skip_data(tar, hdr.size)
-            continue
-        end
-        check_header(hdr)
-        # normalize path and check for symlink attacks
-        path = ""
-        parts = String[]
-        for part in split(hdr.path, '/')
-            (isempty(part) || part == ".") && continue
-            path in links && error("""
-            Refusing to extract path with symlink prefix, possible attack
-             * symlink prefix: $(repr(path))
-             * extracted path: $(repr(hdr.path))
-            """)
-            path = isempty(path) ? part : "$path/$part"
-            push!(parts, part)
-        end
-        if hdr.type == :symlink
-            push!(links, path)
-        else
-            delete!(links, path)
-        end
+    read_tarball(predicate, tarball; buf=buf) do tar, hdr, parts
         # get the file system version of the path
-        sys_path = joinpath(root, parts...)
+        sys_path = reduce(joinpath, init=root, parts)
         # delete anything that's there already
         ispath(sys_path) && rm(sys_path, force=true, recursive=true)
         # ensure dirname(sys_path) is a directory
@@ -97,6 +59,60 @@ function extract_tarball(
         else # should already be caught by check_header
             error("unsupported tarball entry type: $(hdr.type)")
         end
+    end
+end
+
+function read_tarball(
+    extract::Function,
+    predicate::Function,
+    tarball::AbstractString;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    open(tarball) do tar
+        read_tarball(extract, predicate, tar, buf=buf)
+    end
+end
+
+function read_tarball(
+    callback::Function,
+    predicate::Function,
+    tar::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    links = Set{String}()
+    while !eof(tar)
+        hdr = read_header(tar, buf=buf)
+        hdr === nothing && break
+        # check if we should extract or skip
+        if !predicate(hdr)
+            skip_data(tar, hdr.size)
+            continue
+        end
+        check_header(hdr)
+        # normalize path and check for symlink attacks
+        path = ""
+        for part in split(hdr.path, '/')
+            (isempty(part) || part == ".") && continue
+            # check_header doesn't allow ".." in path
+            path in links && error("""
+            Refusing to extract path with symlink prefix, possible attack
+             * symlink prefix: $(repr(path))
+             * extracted path: $(repr(hdr.path))
+            """)
+            path = isempty(path) ? part : "$path/$part"
+        end
+        if hdr.type == :symlink
+            push!(links, path)
+        else
+            delete!(links, path)
+        end
+        before = applicable(position, tar) ? position(tar) : 0
+        callback(tar, hdr, split(path, '/', keepempty=false))
+        applicable(position, tar) || continue
+        advanced = position(tar) - before
+        expected = round_up(hdr.size)
+        advanced == expected ||
+            error("callback read $advanced bytes instead of $expected")
     end
 end
 
@@ -242,6 +258,7 @@ function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, 
 end
 
 round_up(size) = 512 * ((size + 511) ÷ 512)
+
 function skip_data(tar::IO, size::Integer)
     skip(tar, round_up(size))
 end
