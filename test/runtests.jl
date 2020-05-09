@@ -2,7 +2,9 @@ using Test
 using Tar_jll
 
 import Tar
-import Pkg.GitTools: tree_hash
+import Pkg.GitTools
+
+tree_hash(path::AbstractString) = bytes2hex(GitTools.tree_hash(path))
 
 function gen_file(file::String, size::Int)
     open(file, write=true) do io
@@ -76,8 +78,8 @@ end
     rm(dir, recursive=true)
 end
 
-function check_tree_hash(hash::Vector{UInt8}, root::AbstractString)
-    @test string(tree_hash(root)) == string(hash)
+function check_tree_hash(hash::AbstractString, root::AbstractString)
+    @test tree_hash(root) == hash
     rm(root, recursive=true)
 end
 
