@@ -162,22 +162,37 @@ end
 ## error checking utility functions
 
 create_dir_check(dir::AbstractString) = isdir(dir) ||
-    error("not a directory: $dir\nUSAGE: create([predicate,] dir, [tarball])")
+    error("""
+    not a directory: $dir
+    USAGE: create([predicate,] dir, [tarball])
+    """)
 
 list_tarball_check(tarball::AbstractString) = isfile(tarball) ||
-    error("not a file: $tarball\nUSAGE: list(tarball)")
+    error("""
+    not a file: $tarball
+    USAGE: list(tarball)
+    """)
 
 extract_tarball_check(tarball::AbstractString) = isfile(tarball) ||
-    error("not a file: $tarball\nUSAGE: extract(tarball, [dir])")
+    error("""
+    not a file: $tarball
+    USAGE: extract([predicate,] tarball, [dir])
+    """)
 
 extract_tarball_check(tarball::IO) = nothing
 
 function extract_dir_check(dir::AbstractString)
     st = stat(dir)
     ispath(st) && !isdir(st) &&
-        error("not a directory: $dir\nUSAGE: extract(tarball, [dir])")
+        error("""
+        not a directory: $dir
+        USAGE: extract([predicate,] tarball, [dir])
+        """)
     isdir(st) && !isempty(readdir(dir)) &&
-        error("directory not empty: $dir\n USAGE: extract(tarball, [dir])")
+        error("""
+        directory not empty: $dir
+        USAGE: extract([predicate,] tarball, [dir])
+        """)
 end
 
 end # module
