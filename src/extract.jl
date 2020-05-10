@@ -95,9 +95,7 @@ function git_tree_hash(
             end
         elseif hdr.type == :file
             mode = iszero(hdr.mode & 0o100) ? "100644" : "100755"
-            hash = git_object_hash("blob", HashType) do io
-                read_data(tar, io, size=hdr.size, buf=buf)
-            end
+            hash = git_file_hash(tar, hdr.size, HashType, buf=buf)
         else
             error("unsupported type for git tree hashing: $(hdr.type)")
         end
@@ -142,6 +140,28 @@ function git_object_hash(
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
     SHA.update!(ctx, body)
+    return bytes2hex(SHA.digest!(ctx))
+end
+
+function git_file_hash(
+    tar::IO,
+    size::Int,
+    HashType::DataType;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    ctx = HashType()
+    SHA.update!(ctx, codeunits("blob $size\0"))
+    # TODO: this largely duplicates the logic of read_data
+    # read_data could be used directly if SHA offered an interface
+    # where you write data to an IO object and it maintains a hash
+    while size > 0
+        r = readbytes!(tar, buf, size < sizeof(buf) ? round_up(size) : sizeof(buf))
+        r < 512 && eof(io) && error("premature end of tar file")
+        v = view(buf, 1:min(r, size))
+        SHA.update!(ctx, v)
+        size -= length(v)
+    end
+    @assert size == 0
     return bytes2hex(SHA.digest!(ctx))
 end
 
