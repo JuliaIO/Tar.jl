@@ -100,6 +100,10 @@ This means that two trees with the same `git` tree hash can produce different ta
 Therefore, they will have the same `git` tree hash, but produce different tarballs.
 Two _identical_ file trees will always produce identical tarballs, however, and that tarball should remain stable in future versions of the `Tar` package.
 
+The `tree_hash` function can be used to compute a git-style tree hash of the contents of a tarball (without needing to extract it).
+Moreover, two tarballs created by the `Tar` package will have the same hash if and only if they contain the same file tree, which is true if and only if they are identical tarballs.
+You can, however, hash tarballs not created by `Tar` this way to see if they represent the same file tree, and you can use the `skip_empty=true` option to `tree_hash` to compute the hash that `git` would assign the tree, ignoring empty directories.
+
 ## API & Usage
 
 The public API of `Tar` includes three functions and one type:
@@ -170,25 +174,6 @@ these checks and list all the the contents of the tar file whether `extract`
 would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
 
-### Tar.Header
-
-The `Header` type is a struct representing the essential metadata for a single
-record in a tar file with this definition:
-
-    struct Header
-        path :: String # path relative to the root
-        type :: Symbol # type indicator (see below)
-        mode :: UInt16 # mode/permissions (best viewed in octal)
-        size :: Int64  # size of record data in bytes
-        link :: String # target path of a symlink
-    end
-
-Types are represented with the following symbols: `file`, `hardlink`, `symlink`,
-`chardev`, `blockdev`, `directory`, `fifo`, or for unknown types, the typeflag
-character as a symbol. Note that [`extract`](#Tarextract) refuses to extract records
-types other than `file`, `symlink` and `directory`; [`list`](#Tarlist) will only
-list other kinds of records if called with `strict=false`.
-
 ### Tar.tree_hash
 
     tree_hash([ predicate, ] tarball;
@@ -239,6 +224,25 @@ hash, the hash value that you get will match the hash value computed by
 are hashing trees that may contain empty directories (i.e. do not come from a
 git repo), however, it is recommended that you hash them using a tool (such as
 this one) that does not ignore empty directories.
+
+### Tar.Header
+
+The `Header` type is a struct representing the essential metadata for a single
+record in a tar file with this definition:
+
+    struct Header
+        path :: String # path relative to the root
+        type :: Symbol # type indicator (see below)
+        mode :: UInt16 # mode/permissions (best viewed in octal)
+        size :: Int64  # size of record data in bytes
+        link :: String # target path of a symlink
+    end
+
+Types are represented with the following symbols: `file`, `hardlink`, `symlink`,
+`chardev`, `blockdev`, `directory`, `fifo`, or for unknown types, the typeflag
+character as a symbol. Note that [`extract`](#Tarextract) refuses to extract records
+types other than `file`, `symlink` and `directory`; [`list`](#Tarlist) will only
+list other kinds of records if called with `strict=false`.
 
 <!-- END: copied from inline doc strings -->
 
