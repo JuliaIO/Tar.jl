@@ -323,15 +323,17 @@ end
 function tree_hash_tarball(
     tarball::AbstractString;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    HashType = SHA.SHA1_CTX,
 )
     open(tarball) do tar
-        tree_hash_tarball(tar, buf=buf)
+        tree_hash_tarball(tar, buf=buf, HashType=HashType)
     end
 end
 
 function tree_hash_tarball(
     tar::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    HashType = SHA.SHA1_CTX,
 )
     links = Set{String}()
     entries = Dict()
@@ -364,10 +366,10 @@ function tree_hash_tarball(
         if hdr.type == :directory
             # nothing
         elseif hdr.type == :symlink
-            hash = link_hash(last(parts), hdr.link)
+            hash = link_hash(last(parts), hdr.link, HashType)
             entry[last(parts)] = (hash, "120000")
         elseif hdr.type == :file
-            hash = file_hash(last(parts), hdr.size, tar)
+            hash = file_hash(last(parts), hdr.size, tar, HashType)
             if iszero(hdr.mode & 0o100)
                 entry[last(parts)] = (hash, "100644")
             else
@@ -378,7 +380,7 @@ function tree_hash_tarball(
             error("unsupported tarball entry type: $(hdr.type)")
         end
     end
-    hash, isemptydir = tree_hash(entries)
+    hash, isemptydir = tree_hash(entries, HashType)
     return hash
 end
 
@@ -389,11 +391,11 @@ function mkentry!(entries, parts)
     return mkentry!(get!(entries, parts[1], Dict()), parts[2:end])
 end
 
-function tree_hash(file_hashes::Dict; HashType = SHA.SHA1_CTX)
+function tree_hash(file_hashes::Dict, HashType = SHA.SHA1_CTX)
     entries = Tuple{String, Vector{UInt8}, String}[]
     for (name, v) in file_hashes
         if v isa Dict
-            hash, isemptydir = tree_hash(v, HashType = HashType)
+            hash, isemptydir = tree_hash(v, HashType)
             mode = "40000"
         else
             hash, mode = v
@@ -405,7 +407,7 @@ function tree_hash(file_hashes::Dict; HashType = SHA.SHA1_CTX)
     end
 
     # Sort entries by name (with trailing slashes for directories)
-    sort!(entries, by = ((name, hash, mode),) -> mode == "040000" ? name*"/" : name)
+    sort!(entries, by = ((name, hash, mode),) -> mode == "40000" ? name*"/" : name)
 
     content_size = 0
     for (n, h, m) in entries

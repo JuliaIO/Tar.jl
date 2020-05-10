@@ -170,9 +170,9 @@ an IO object instead of a path, then the archive contents will be read
 from that IO stream. The tree hash is computed without extracting the
 files to disk.
 """
-function tree_hash(tarball::Union{AbstractString, IO})
+function tree_hash(tarball::Union{AbstractString, IO}; HashType = SHA.SHA1_CTX)
     tree_hash_tarball_check(tarball)
-    return tree_hash_tarball(tarball)
+    return tree_hash_tarball(tarball, HashType=HashType)
 end
 
 ## error checking utility functions
