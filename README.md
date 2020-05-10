@@ -100,6 +100,10 @@ This means that two trees with the same `git` tree hash can produce different ta
 Therefore, they will have the same `git` tree hash, but produce different tarballs.
 Two _identical_ file trees will always produce identical tarballs, however, and that tarball should remain stable in future versions of the `Tar` package.
 
+The `tree_hash` function can be used to compute a git-style tree hash of the contents of a tarball (without needing to extract it).
+Moreover, two tarballs created by the `Tar` package will have the same hash if and only if they contain the same file tree, which is true if and only if they are identical tarballs.
+You can, however, hash tarballs not created by `Tar` this way to see if they represent the same file tree, and you can use the `skip_empty=true` option to `tree_hash` to compute the hash that `git` would assign the tree, ignoring empty directories.
+
 ## API & Usage
 
 The public API of `Tar` includes three functions and one type:
