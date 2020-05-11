@@ -1,3 +1,5 @@
+import Base.Filesystem: StatStruct
+
 @static if VERSION < v"1.4.0-DEV"
     unsorted_readdir(args...) = readdir(args...)
 else
@@ -8,23 +10,23 @@ function write_tarball(
     predicate::Function,
     out::IO,
     sys_path::String,      # path in the filesystem
-    tar_path::String = ""; # path in the tarball
+    tar_path::String = "", # path in the tarball
+    stat::StatStruct = lstat(sys_path);
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     w = 0
-    st = lstat(sys_path)
-    files = Tuple{String,String}[]
-    if islink(st)
+    files = Tuple{String,String,StatStruct}[]
+    if islink(stat)
         size = 0
         type = '2'
         mode = 0o755
         link = readlink(sys_path)
-    elseif isfile(st)
-        size = filesize(st)
+    elseif isfile(stat)
+        size = filesize(stat)
         type = '0'
-        mode = iszero(filemode(st) & 0o100) ? 0o644 : 0o755
+        mode = iszero(filemode(stat) & 0o100) ? 0o644 : 0o755
         link = ""
-    elseif isdir(st)
+    elseif isdir(stat)
         size = 0
         type = '5'
         mode = 0o755
@@ -32,8 +34,9 @@ function write_tarball(
         for name in unsorted_readdir(sys_path)
             path = joinpath(sys_path, name)
             predicate(path) || continue
-            isdir(lstat(path)) && (name = "$name/")
-            push!(files, (name, path))
+            stat′ = lstat(path)
+            isdir(stat′) && (name = "$name/")
+            push!(files, (name, path, stat′))
         end
     else
         error("unsupported file type: $(repr(sys_path))")
@@ -45,8 +48,8 @@ function write_tarball(
         w += write_header(out, hdr, buf=buf)
         size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
     end
-    for (name, path) in sort!(files)
-        w += write_tarball(predicate, out, path, tar_path * name)
+    for (name, path, stat′) in sort!(files)
+        w += write_tarball(predicate, out, path, tar_path * name, stat′)
     end
     return w
 end
