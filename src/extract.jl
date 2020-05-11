@@ -164,7 +164,7 @@ function git_file_hash(
         size -= length(v)
         t -= r
     end
-    @assert size == 0
+    @assert size == t == 0
     return bytes2hex(SHA.digest!(ctx))
 end
 
@@ -418,7 +418,7 @@ function read_data(
         size -= write(file, view(buf, 1:min(r, size)))
         t -= r
     end
-    @assert size == 0
+    @assert size == t == 0
     return
 end
 
