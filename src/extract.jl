@@ -154,14 +154,17 @@ function git_file_hash(
     # TODO: this largely duplicates the logic of read_data
     # read_data could be used directly if SHA offered an interface
     # where you write data to an IO object and it maintains a hash
+    t = round_up(size)
     while size > 0
-        r = readbytes!(tar, buf, size < sizeof(buf) ? round_up(size) : sizeof(buf))
-        r < 512 && eof(io) && error("premature end of tar file")
+        n = min(t, length(buf))
+        r = readbytes!(tar, buf, n)
+        r < n && eof(io) && error("premature end of tar file")
         v = view(buf, 1:min(r, size))
         SHA.update!(ctx, v)
         size -= length(v)
+        t -= r
     end
-    @assert size == 0
+    @assert size == t == 0
     return bytes2hex(SHA.digest!(ctx))
 end
 
@@ -407,12 +410,15 @@ function read_data(
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )::Nothing
+    t = round_up(size)
     while size > 0
-        r = readbytes!(tar, buf, size < sizeof(buf) ? round_up(size) : sizeof(buf))
-        r < 512 && eof(io) && error("premature end of tar file")
+        n = min(t, length(buf))
+        r = readbytes!(tar, buf, n)
+        r < n && eof(io) && error("premature end of tar file")
         size -= write(file, view(buf, 1:min(r, size)))
+        t -= r
     end
-    @assert size == 0
+    @assert size == t == 0
     return
 end
 
