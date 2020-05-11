@@ -138,18 +138,16 @@ end
         @test issorted(headers, by = hdr -> hdr.path)
         for hdr in headers
             @test !isempty(hdr.path)
+            @test hdr.path[end] != '/'
             @test hdr.type in (:file, :directory, :symlink)
             if hdr.type == :file
-                @test hdr.path[end] != '/'
                 @test hdr.mode in (0o644, 0o755)
                 @test isempty(hdr.link)
             elseif hdr.type == :directory
-                @test hdr.path[end] == '/'
                 @test hdr.mode == 0o755
                 @test hdr.size == 0
                 @test isempty(hdr.link)
             elseif hdr.type == :symlink
-                @test hdr.path[end] != '/'
                 @test hdr.mode == 0o755
                 @test hdr.size == 0
                 @test !isempty(hdr.link)
@@ -338,7 +336,7 @@ function make_test_dir(gen_skip::Bool=false)
     return dir
 end
 
-const test_dir_paths = ["dir/file", "empty/", "file", "link"]
+const test_dir_paths = ["dir/file", "empty", "file", "link"]
 Sys.iswindows() && pop!(test_dir_paths)
 
 @testset "API: create" begin

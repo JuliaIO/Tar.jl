@@ -1,7 +1,7 @@
 @static if VERSION < v"1.4.0-DEV"
-    unsorted_readdir(args...) = readdir(args...)
+    sorted_readdir(args...) = sort!(readdir(args...))
 else
-    unsorted_readdir(args...) = readdir(args...; sort=false)
+    sorted_readdir(args...) = readdir(args...)
 end
 
 function write_tarball(
@@ -29,10 +29,9 @@ function write_tarball(
         type = '5'
         mode = 0o755
         link = ""
-        for name in unsorted_readdir(sys_path)
+        for name in sorted_readdir(sys_path)
             path = joinpath(sys_path, name)
             predicate(path) || continue
-            isdir(lstat(path)) && (name = "$name/")
             push!(files, (name, path))
         end
     else
@@ -46,7 +45,8 @@ function write_tarball(
         size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
     end
     for (name, path) in sort!(files)
-        w += write_tarball(predicate, out, path, tar_path * name)
+        tar_path′ = isempty(tar_path) ? name : "$tar_path/$name"
+        w += write_tarball(predicate, out, path, tar_path′)
     end
     return w
 end
