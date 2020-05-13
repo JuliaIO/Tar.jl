@@ -40,13 +40,30 @@ function create_tarball(
     if isempty(files) # non-empty directories are implicit
         path = isempty(tar_path) ? "." : tar_path
         hdr = Header(path, to_symbolic_type(type), mode, size, link)
-        check_header(hdr)
-        w += write_header(tar, hdr, buf=buf)
-        size > 0 && (w += write_data(tar, sys_path, size=size, buf=buf))
+        w += write_tarball(tar, hdr, sys_path, buf=buf)
     end
     for (name, path) in sort!(files)
         tar_path′ = isempty(tar_path) ? name : "$tar_path/$name"
         w += create_tarball(predicate, tar, path, tar_path′)
+    end
+    return w
+end
+
+function write_tarball(
+    tar::IO,
+    hdr::Header,
+    data::Union{Nothing, AbstractString, IO} = nothing;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    # error checks
+    check_header(hdr)
+    hdr.type != :file || data !== nothing ||
+        throw(ArgumentError("data required for file record: $(repr(hdr))"))
+
+    # write tarball header & data
+    w = write_header(tar, hdr, buf=buf)
+    if hdr.type == :file
+        w += write_data(tar, data, size=hdr.size, buf=buf)
     end
     return w
 end
