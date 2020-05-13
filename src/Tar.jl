@@ -40,7 +40,7 @@ will be included in the archive.
 function create(predicate::Function, dir::AbstractString, tarball::AbstractString)
     create_dir_check(dir)
     try open(tarball, write=true) do out
-            write_tarball(predicate, out, dir)
+            create_tarball(predicate, out, dir)
         end
     catch
         rm(tarball, force=true)
@@ -51,14 +51,14 @@ end
 
 function create(predicate::Function, dir::AbstractString, tarball::IO)
     create_dir_check(dir)
-    write_tarball(predicate, tarball, dir)
+    create_tarball(predicate, tarball, dir)
     return tarball
 end
 
 function create(predicate::Function, dir::AbstractString)
     create_dir_check(dir)
     tarball, out = mktemp()
-    try write_tarball(predicate, out, dir)
+    try create_tarball(predicate, out, dir)
     catch
         close(out)
         rm(tarball, force=true)

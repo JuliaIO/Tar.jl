@@ -4,7 +4,7 @@ else
     sorted_readdir(args...) = readdir(args...)
 end
 
-function write_tarball(
+function create_tarball(
     predicate::Function,
     out::IO,
     sys_path::String,      # path in the filesystem
@@ -46,18 +46,9 @@ function write_tarball(
     end
     for (name, path) in sort!(files)
         tar_path′ = isempty(tar_path) ? name : "$tar_path/$name"
-        w += write_tarball(predicate, out, path, tar_path′)
+        w += create_tarball(predicate, out, path, tar_path′)
     end
     return w
-end
-
-function write_tarball(
-    out::IO,
-    sys_path::String,
-    tar_path::String = "";
-    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
-    write_tarball(p->true, out, sys_path, tar_path, buf=buf)
 end
 
 function write_header(
