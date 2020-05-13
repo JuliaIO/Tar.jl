@@ -209,14 +209,14 @@ end
 
 function write_data(
     tar::IO,
-    file::IO;
+    data::IO;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     w = s = 0
     @assert sizeof(buf) % 512 == 0
-    while !eof(file)
-        s += n = readbytes!(file, buf)
+    while !eof(data)
+        s += n = readbytes!(data, buf)
         if n < sizeof(buf)
             r = n % 512
             if r != 0
@@ -233,7 +233,7 @@ function write_data(
     data did not have the expected size:
      - got: $s
      - expected: $size
-    while extracting tar data from $file.
+    while extracting tar data from $data.
     """)
     return w
 end
@@ -244,7 +244,7 @@ function write_data(
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    open(file) do file′
-        write_data(tar, file′, size=size, buf=buf)
+    open(file) do data
+        write_data(tar, data, size=size, buf=buf)
     end
 end
