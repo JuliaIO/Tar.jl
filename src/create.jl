@@ -6,7 +6,7 @@ end
 
 function create_tarball(
     predicate::Function,
-    out::IO,
+    tar::IO,
     sys_path::String,      # path in the filesystem
     tar_path::String = ""; # path in the tarball
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
@@ -41,18 +41,18 @@ function create_tarball(
         path = isempty(tar_path) ? "." : tar_path
         hdr = Header(path, to_symbolic_type(type), mode, size, link)
         check_header(hdr)
-        w += write_header(out, hdr, buf=buf)
-        size > 0 && (w += write_data(out, sys_path, size=size, buf=buf))
+        w += write_header(tar, hdr, buf=buf)
+        size > 0 && (w += write_data(tar, sys_path, size=size, buf=buf))
     end
     for (name, path) in sort!(files)
         tar_path′ = isempty(tar_path) ? name : "$tar_path/$name"
-        w += create_tarball(predicate, out, path, tar_path′)
+        w += create_tarball(predicate, tar, path, tar_path′)
     end
     return w
 end
 
 function write_header(
-    out::IO,
+    tar::IO,
     hdr::Header;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
@@ -91,15 +91,15 @@ function write_header(
     w = 0
     if !isempty(extended)
         @assert issorted(extended)
-        w += write_extended_header(out, extended, buf=buf)
+        w += write_extended_header(tar, extended, buf=buf)
     end
     # emit standard header
     std_hdr = Header(hdr.path, hdr.type, hdr.mode, hdr.size, link)
-    w += write_standard_header(out, std_hdr, name=name, prefix=prefix, buf=buf)
+    w += write_standard_header(tar, std_hdr, name=name, prefix=prefix, buf=buf)
 end
 
 function write_extended_header(
-    out::IO,
+    tar::IO,
     metadata::Vector{Pair{String,String}};
     type::Symbol = :x, # default: non-global extended header
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
@@ -122,12 +122,12 @@ function write_extended_header(
         write(d, "$n$entry")
     end
     hdr = Header("", type, 0o000, position(d), "")
-    w = write_standard_header(out, hdr, buf=buf)
-    w += write_data(out, seekstart(d), size=hdr.size, buf=buf)
+    w = write_standard_header(tar, hdr, buf=buf)
+    w += write_data(tar, seekstart(d), size=hdr.size, buf=buf)
 end
 
 function write_standard_header(
-    out::IO,
+    tar::IO,
     hdr::Header;
     name::AbstractString = "",
     prefix::AbstractString = "",
@@ -202,7 +202,7 @@ function write_standard_header(
     @assert position(h) == 156
 
     # write header
-    w = write(out, header_view)
+    w = write(tar, header_view)
     @assert w == 512
     return w
 end
