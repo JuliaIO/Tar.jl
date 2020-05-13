@@ -7,45 +7,24 @@ end
 function create_tarball(
     predicate::Function,
     tar::IO,
-    sys_path::String,      # path in the filesystem
-    tar_path::String = ""; # path in the tarball
+    sys_path::String,       # path in the filesystem
+    tar_path::String = "."; # path in the tarball
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     w = 0
-    st = lstat(sys_path)
-    files = Tuple{String,String}[]
-    if islink(st)
-        size = 0
-        type = '2'
-        mode = 0o755
-        link = readlink(sys_path)
-    elseif isfile(st)
-        size = filesize(st)
-        type = '0'
-        mode = iszero(filemode(st) & 0o100) ? 0o644 : 0o755
-        link = ""
-    elseif isdir(st)
-        size = 0
-        type = '5'
-        mode = 0o755
-        link = ""
+    hdr = path_header(sys_path, tar_path)
+    if hdr.type == :directory
         for name in sorted_readdir(sys_path)
-            path = joinpath(sys_path, name)
-            predicate(path) || continue
-            push!(files, (name, path))
+            sys_path′ = joinpath(sys_path, name)
+            predicate(sys_path′) || continue
+            tar_path′ = tar_path == "." ? name : "$tar_path/$name"
+            w += create_tarball(predicate, tar, sys_path′, tar_path′, buf=buf)
         end
-    else
-        error("unsupported file type: $(repr(sys_path))")
     end
-    if isempty(files) # non-empty directories are implicit
-        path = isempty(tar_path) ? "." : tar_path
-        hdr = Header(path, to_symbolic_type(type), mode, size, link)
+    if hdr.type != :directory || w == 0
         w += write_tarball(tar, hdr, sys_path, buf=buf)
     end
-    for (name, path) in sort!(files)
-        tar_path′ = isempty(tar_path) ? name : "$tar_path/$name"
-        w += create_tarball(predicate, tar, path, tar_path′)
-    end
+    @assert w > 0
     return w
 end
 
