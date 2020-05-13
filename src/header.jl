@@ -116,3 +116,26 @@ function check_header(hdr::Header)
     msg *= repr(hdr)
     error(msg)
 end
+
+function path_header(sys_path::AbstractString, tar_path::AbstractString)
+    st = lstat(sys_path)
+    if islink(st)
+        size = 0
+        type = :symlink
+        mode = 0o755
+        link = readlink(sys_path)
+    elseif isdir(st)
+        size = 0
+        type = :directory
+        mode = 0o755
+        link = ""
+    elseif isfile(st)
+        size = filesize(st)
+        type = :file
+        mode = iszero(filemode(st) & 0o100) ? 0o644 : 0o755
+        link = ""
+    else
+        error("unsupported file type: $(repr(sys_path))")
+    end
+    Header(tar_path, type, mode, size, link)
+end
