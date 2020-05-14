@@ -7,15 +7,12 @@ else
 end
 
 function list_tarball(
-    tar::IO;
-    raw::Bool = false,
-    strict::Bool = !raw,
+    tar::IO,
+    read_hdr::Function = read_standard_header;
+    strict::Bool = true,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    raw && strict &&
-        error("`raw=true` and `strict=true` options are incompatible")
     headers = Header[]
-    read_hdr = raw ? read_standard_header : read_header
     while !eof(tar)
         hdr = read_hdr(tar, buf=buf)
         hdr === nothing && break
