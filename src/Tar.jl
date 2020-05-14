@@ -20,6 +20,18 @@ include("extract.jl")
 
 const true_predicate = _ -> true
 
+open_read(f::Function, tarball::AbstractString) = open(f, tarball)
+open_read(f::Function, tarball::IO) = f(tarball)
+
+function open_write(f::Function, tarball::AbstractString)
+    try open(f, tarball, write=true)
+    catch
+        rm(tarball, force=true)
+        rethrow()
+    end
+end
+open_write(f::Function, tarball::IO) = f(tarball)
+
 ## official API: create, list, extract
 
 """
@@ -40,34 +52,28 @@ tarball if `predicate(path)` is true. If `predicate(path)` returns false for a
 directory, then the directory is excluded entirely: nothing under that directory
 will be included in the archive.
 """
-function create(predicate::Function, dir::AbstractString, tarball::AbstractString)
+function create(
+    predicate::Function,
+    dir::AbstractString,
+    tarball::Union{AbstractString, IO},
+)
     create_dir_check(dir)
-    try open(tarball, write=true) do out
-            create_tarball(predicate, out, dir)
-        end
-    catch
-        rm(tarball, force=true)
-        rethrow()
+    open_write(tarball) do tar
+        create_tarball(predicate, tar, dir)
     end
-    return tarball
-end
-
-function create(predicate::Function, dir::AbstractString, tarball::IO)
-    create_dir_check(dir)
-    create_tarball(predicate, tarball, dir)
     return tarball
 end
 
 function create(predicate::Function, dir::AbstractString)
     create_dir_check(dir)
-    tarball, out = mktemp()
-    try create_tarball(predicate, out, dir)
+    tarball, tar = mktemp()
+    try create_tarball(predicate, tar, dir)
     catch
-        close(out)
+        close(tar)
         rm(tarball, force=true)
         rethrow()
     end
-    close(out)
+    close(tar)
     return tarball
 end
 
@@ -92,18 +98,17 @@ these checks and list all the the contents of the tar file whether `extract`
 would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
 """
-function list(tarball::AbstractString; raw::Bool=false, strict::Bool=!raw)
-    list_tarball_check(tarball)
-    open(tarball) do io
-        list(io, raw=raw, strict=strict)
-    end
-end
-
-function list(tarball::IO; raw::Bool=false, strict::Bool=!raw)
+function list(
+    tarball::Union{AbstractString, IO};
+    raw::Bool=false,
+    strict::Bool=!raw,
+)
     raw && strict &&
         error("`raw=true` and `strict=true` options are incompatible")
     read_hdr = raw ? read_standard_header : read_header
-    list_tarball(tarball, read_hdr, strict=strict)
+    open_read(tarball) do tar
+        list_tarball(tar, read_hdr, strict=strict)
+    end
 end
 
 """
@@ -133,20 +138,24 @@ function extract(
 )
     extract_tarball_check(tarball)
     extract_dir_check(dir)
-    if ispath(dir)
-        extract_tarball(predicate, tarball, dir)
-    else
-        mkdir(dir)
-        extract_tarball_with_cleanup(predicate, tarball, dir)
+    open_read(tarball) do tar
+        if ispath(dir)
+            extract_tarball(predicate, tar, dir)
+        else
+            mkdir(dir)
+            extract_tarball_cleanup_dir(predicate, tar, dir)
+        end
     end
     return dir
 end
 
 function extract(predicate::Function, tarball::Union{AbstractString, IO})
     extract_tarball_check(tarball)
-    dir = mktempdir()
-    extract_tarball_with_cleanup(predicate, tarball, dir)
-    return dir
+    open_read(tarball) do tar
+        dir = mktempdir()
+        extract_tarball_cleanup_dir(predicate, tar, dir)
+        return dir
+    end
 end
 
 extract(tarball::Union{AbstractString, IO}, dir::AbstractString) =
@@ -154,13 +163,14 @@ extract(tarball::Union{AbstractString, IO}, dir::AbstractString) =
 extract(tarball::Union{AbstractString, IO}) =
     extract(true_predicate, tarball)
 
-function extract_tarball_with_cleanup(
+function extract_tarball_cleanup_dir(
     predicate::Function,
-    tarball::Union{AbstractString, IO},
+    tar::IO,
     dir::AbstractString,
 )
-    try extract_tarball(predicate, tarball, dir)
+    try extract_tarball(predicate, tar, dir)
     catch
+        chmod(dir, 0o700, recursive=true)
         rm(dir, force=true, recursive=true)
         rethrow()
     end
@@ -223,12 +233,14 @@ function tree_hash(
     skip_empty::Bool = false,
 )
     HashType =
-        algorithm == "git-sha1"     ? SHA.SHA1_CTX :
-        algorithm == "git-sha256"   ? SHA.SHA256_CTX :
+        algorithm == "git-sha1"   ? SHA.SHA1_CTX :
+        algorithm == "git-sha256" ? SHA.SHA256_CTX :
             error("invalid tree hashing algorithm: $algorithm")
 
     tree_hash_tarball_check(tarball)
-    git_tree_hash(predicate, tarball, HashType, skip_empty)
+    open_read(tarball) do tar
+        git_tree_hash(predicate, tar, HashType, skip_empty)
+    end
 end
 
 function tree_hash(

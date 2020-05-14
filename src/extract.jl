@@ -25,11 +25,11 @@ end
 
 function extract_tarball(
     predicate::Function,
-    tarball::Union{AbstractString, IO},
+    tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    read_tarball(predicate, tarball; buf=buf) do tar, hdr, parts
+    read_tarball(predicate, tar; buf=buf) do tar, hdr, parts
         # get the file system version of the path
         sys_path = reduce(joinpath, init=root, parts)
         # delete anything that's there already
@@ -63,14 +63,14 @@ end
 
 function git_tree_hash(
     predicate::Function,
-    tarball::Union{AbstractString, IO},
+    tar::IO,
     HashType::DataType,
     skip_empty::Bool;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     # build tree with leaves for files and symlinks
     tree = Dict{String,Any}()
-    read_tarball(predicate, tarball; buf=buf) do tar, hdr, parts
+    read_tarball(predicate, tar; buf=buf) do tar, hdr, parts
         isempty(parts) && return
         name = pop!(parts)
         node = tree
@@ -163,17 +163,6 @@ function git_file_hash(
     end
     @assert size == t == 0
     return bytes2hex(SHA.digest!(ctx))
-end
-
-function read_tarball(
-    extract::Function,
-    predicate::Function,
-    tarball::AbstractString;
-    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
-    open(tarball) do tar
-        read_tarball(extract, predicate, tar, buf=buf)
-    end
 end
 
 function read_tarball(
