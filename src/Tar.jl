@@ -1,15 +1,18 @@
 module Tar
 
+# 2 MiB to take advantage of THP if enabled
+const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
+
 # TODO: add some version of this method to Base
 function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
     n < 0 && throw(ArgumentError("cannot skip backwards when reading from a process"))
-    for _ = 1:n
-        read(io, UInt8)
+    isempty(skip_buffer) && resize!(skip_buffer, DEFAULT_BUFFER_SIZE)
+    while n > 0
+        n -= readbytes!(io, skip_buffer, min(n, length(skip_buffer)))
     end
+    return io
 end
-
-# 2 MiB to take advantage of THP if enabled
-const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
+const skip_buffer = UInt8[]
 
 include("header.jl")
 include("create.jl")
