@@ -177,6 +177,74 @@ function extract_tarball_cleanup_dir(
 end
 
 """
+    rewrite([ predicate, ], old_tarball, [ new_tarball ]) -> new_tarball
+
+        predicate   :: Header --> Bool
+        old_tarball :: Union{AbstractString, IO}
+        new_tarball :: Union{AbstractString, IO}
+
+Rewrite `old_tarball` to the standard format that `create` generates, while also
+checking that it doesn't contain anything that would cause `extract` to raise an
+error. This is functionally equivalent to doing
+
+    Tar.create(Tar.extract(predicate, old_tarball), new_tarball)
+
+However, it never extracts anything to disk and instead uses the `seek` function
+to navigate the old tarball's data. If no `new_tarball` argument is passed, the
+new tarball is written to a temporary file whose path is returned.
+
+If a `predicate` function is passed, it is called on each `Header` object that
+is encountered while extracting `old_tarball` and the entry is skipped unless
+`predicate(hdr)` is true. This can be used to selectively rewrite only parts of
+an archive, to skip entries that would cause `extract` to throw an error, or to
+record what content is encountered during the rewrite process.
+"""
+function rewrite(
+    predicate::Function,
+    old_tarball::Union{AbstractString, IO},
+    new_tarball::Union{AbstractString, IO},
+)
+    old_tarball = rewrite_old_tarball_check(old_tarball)
+    open_read(old_tarball) do old_tar
+        open_write(new_tarball) do new_tar
+            rewrite_tarball(predicate, old_tar, new_tar)
+        end
+    end
+    return new_tarball
+end
+
+function rewrite(
+    predicate::Function,
+    old_tarball::Union{AbstractString, IO},
+)
+    old_tarball = rewrite_old_tarball_check(old_tarball)
+    open_read(old_tarball) do old_tar
+        new_tarball, new_tar = mktemp()
+        try rewrite_tarball(predicate, old_tar, new_tar)
+        catch
+            close(new_tar)
+            rm(new_tarball, force=true)
+            rethrow()
+        end
+        close(new_tar)
+        return new_tarball
+    end
+end
+
+function rewrite(
+    old_tarball::Union{AbstractString, IO},
+    new_tarball::Union{AbstractString, IO},
+)
+    rewrite(true_predicate, old_tarball, new_tarball)
+end
+
+function rewrite(
+    old_tarball::Union{AbstractString, IO},
+)
+    rewrite(true_predicate, old_tarball)
+end
+
+"""
     tree_hash([ predicate, ] tarball;
               [ algorithm = "git-sha1", ]
               [ skip_empty = false ]) -> hash::String
@@ -253,20 +321,20 @@ end
 
 ## error checking utility functions
 
-create_dir_check(dir::AbstractString) = isdir(dir) ||
-    error("""
+create_dir_check(dir::AbstractString) =
+    isdir(dir) || error("""
     not a directory: $dir
     USAGE: create([predicate,] dir, [tarball])
     """)
 
-list_tarball_check(tarball::AbstractString) = isfile(tarball) ||
-    error("""
+list_tarball_check(tarball::AbstractString) =
+    isfile(tarball) || error("""
     not a file: $tarball
     USAGE: list(tarball)
     """)
 
-extract_tarball_check(tarball::AbstractString) = isfile(tarball) ||
-    error("""
+extract_tarball_check(tarball::AbstractString) =
+    isfile(tarball) || error("""
     not a file: $tarball
     USAGE: extract([predicate,] tarball, [dir])
     """)
@@ -287,8 +355,17 @@ function extract_dir_check(dir::AbstractString)
         """)
 end
 
-tree_hash_tarball_check(tarball::AbstractString) = isfile(tarball) ||
-    error("""
+rewrite_old_tarball_check(tarball::AbstractString) =
+    isfile(tarball) ? tarball : rror("""
+    not a file: $tarball
+    USAGE: rewrite([predicate,] old_tarball, [new_tarball])
+    """)
+
+rewrite_old_tarball_check(tarball::IO) =
+    applicable(seek, tarball, 0) ? tarball : IOBuffer(read(tarball))
+
+tree_hash_tarball_check(tarball::AbstractString) =
+    isfile(tarball) || error("""
     not a file: $tarball
     USAGE: tree_hash([predicate,] tarball)
     """)

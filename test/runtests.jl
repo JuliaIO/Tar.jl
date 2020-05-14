@@ -503,3 +503,114 @@ end
     end
     check_tree_hash(hash, dir)
 end
+
+@testset "API: rewrite" begin
+    # reference standard tarball
+    reference, hash₁ = make_test_tarball()
+    ref = read(reference)
+
+    if !Sys.iswindows()
+        # alternate tarball made by GNU tar
+        alternate, hash₂ = make_test_tarball() do root
+            tarball, io = mktemp(); close(io)
+            tar(gtar -> run(`$gtar -C $root -cf $tarball .`))
+            return tarball
+        end
+        @test hash₁ == hash₂
+        @test ref != read(alternate)
+    else
+        # at least test the plumbing
+        alternate = tempname()
+        cp(reference, alternate)
+    end
+
+    # rewrite(old::String)
+    tarball = Tar.rewrite(alternate)
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(old::String, new::String)
+    tarball = tempname()
+    Tar.rewrite(alternate, tarball)
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(old::IO)
+    tarball = open(Tar.rewrite, alternate)
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(old::Process)
+    tarball = open(Tar.rewrite, `cat $alternate`)
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(old::IO, new::String)
+    tarball = tempname()
+    open(alternate) do io
+        Tar.rewrite(io, tarball)
+    end
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(old::IO, new::IO)
+    tarball = tempname()
+    open(alternate) do old
+        open(tarball, write=true) do new
+            Tar.rewrite(old, new)
+        end
+    end
+    @test ref == read(tarball)
+    rm(tarball)
+
+    predicate = hdr ->
+        hdr.type == :symlink ? isodd(length(hdr.link)) : isodd(hdr.size)
+    filtered = Tar.create(Tar.extract(predicate, reference))
+    ref = read(filtered)
+    rm(filtered)
+
+    # rewrite(predicate::Function, old::String) — reference
+    tarball = Tar.rewrite(predicate, reference)
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(predicate::Function, old::String) — alternate
+    tarball = Tar.rewrite(predicate, alternate)
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(predicate::Function, old::String, new::String)
+    tarball = tempname()
+    Tar.rewrite(predicate, alternate, tarball)
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(predicate::Function, old::IO)
+    tarball = open(alternate) do io
+        Tar.rewrite(predicate, io)
+    end
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(predicate::Function, old::IO, new::String)
+    tarball = tempname()
+    open(alternate) do io
+        Tar.rewrite(predicate, io, tarball)
+    end
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # rewrite(predicate::Function, old::IO, new::IO)
+    tarball = tempname()
+    open(alternate) do old
+        open(tarball, write=true) do new
+            Tar.rewrite(predicate, old, new)
+        end
+    end
+    @test ref == read(tarball)
+    rm(tarball)
+
+    # cleanup
+    rm(alternate)
+    rm(reference)
+end

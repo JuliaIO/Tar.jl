@@ -106,11 +106,13 @@ You can, however, hash tarballs not created by `Tar` this way to see if they rep
 
 ## API & Usage
 
-The public API of `Tar` includes three functions and one type:
+The public API of `Tar` includes five functions and one type:
 
 * `create` — creates a tarball from an on-disk file tree
 * `extract` — extracts a tarball to an on-disk file tree
 * `list` — lists the contents of a tarball as a vector of `Header` objects
+* `rewrite` — rewrite a tarball to the standard format `create` produces
+* `tree_hash` — compute a tree hash of the content of a tarball (default: git SHA1)
 * `Header` — struct representing metadata that `Tar` considers important in a TAR entry
 
 None of these are exported, however: the recommended usage is to do `import Tar` and then access all of these names fully qualified as `Tar.create`, `Tar.extract` and so on.
@@ -173,6 +175,30 @@ By default `list` will error if it encounters any tarball contents which the
 these checks and list all the the contents of the tar file whether `extract`
 would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
+
+### Tar.rewrite
+
+    rewrite([ predicate, ], old_tarball, [ new_tarball ]) -> new_tarball
+
+* `predicate   :: Header --> Bool`
+* `old_tarball :: Union{AbstractString, IO}`
+* `new_tarball :: Union{AbstractString, IO}`
+
+Rewrite `old_tarball` to the standard format that `create` generates, while also
+checking that it doesn't contain anything that would cause `extract` to raise an
+error. This is functionally equivalent to doing
+
+    Tar.create(Tar.extract(predicate, old_tarball), new_tarball)
+
+However, it never extracts anything to disk and instead uses the `seek` function
+to navigate the old tarball's data. If no `new_tarball` argument is passed, the
+new tarball is written to a temporary file whose path is returned.
+
+If a `predicate` function is passed, it is called on each `Header` object that
+is encountered while extracting `old_tarball` and the entry is skipped unless
+`predicate(hdr)` is true. This can be used to selectively rewrite only parts of
+an archive, to skip entries that would cause `extract` to throw an error, or to
+record what content is encountered during the rewrite process.
 
 ### Tar.tree_hash
 

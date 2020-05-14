@@ -17,6 +17,41 @@ function create_tarball(
     end
 end
 
+function rewrite_tarball(
+    predicate::Function,
+    old_tar::IO,
+    new_tar::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    tree = Dict{String,Any}()
+    read_tarball(predicate, old_tar; buf=buf) do hdr, parts
+        isempty(parts) && return
+        node = tree
+        name = pop!(parts)
+        for part in parts
+            node′ = get(node, part, nothing)
+            if !(node′ isa Dict)
+                node′ = node[part] = Dict{String,Any}()
+            end
+            node = node′
+        end
+        node[name] = (hdr, position(old_tar))
+        skip_data(old_tar, hdr.size)
+    end
+    write_tarball(new_tar, tree, buf=buf) do node, tar_path
+        if node isa Dict
+            hdr = Header(tar_path, :directory, 0o755, 0, "")
+            return hdr, node
+        else
+            hdr, pos = node
+            mode = hdr.type == :file && iszero(hdr.mode & 0o100) ? 0o644 : 0o755
+            hdr′ = Header(tar_path, hdr.type, mode, hdr.size, hdr.link)
+            data = hdr.type == :directory ? nothing : (old_tar, pos)
+            return hdr′, data
+        end
+    end
+end
+
 function write_tarball(
     callback::Function,
     tar::IO,
