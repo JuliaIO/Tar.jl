@@ -29,7 +29,7 @@ function extract_tarball(
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    read_tarball(predicate, tar; buf=buf) do tar, hdr, parts
+    read_tarball(predicate, tar; buf=buf) do hdr, parts
         # get the file system version of the path
         sys_path = reduce(joinpath, init=root, parts)
         # delete anything that's there already
@@ -70,7 +70,7 @@ function git_tree_hash(
 )
     # build tree with leaves for files and symlinks
     tree = Dict{String,Any}()
-    read_tarball(predicate, tar; buf=buf) do tar, hdr, parts
+    read_tarball(predicate, tar; buf=buf) do hdr, parts
         isempty(parts) && return
         name = pop!(parts)
         node = tree
@@ -199,7 +199,7 @@ function read_tarball(
             delete!(links, path)
         end
         before = applicable(position, tar) ? position(tar) : 0
-        callback(tar, hdr, split(path, '/', keepempty=false))
+        callback(hdr, split(path, '/', keepempty=false))
         applicable(position, tar) || continue
         advanced = position(tar) - before
         expected = round_up(hdr.size)
