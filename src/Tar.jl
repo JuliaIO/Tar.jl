@@ -92,12 +92,16 @@ crafty and unexpected things to try to trick you into doing something bad.
 function list(tarball::AbstractString; raw::Bool=false, strict::Bool=!raw)
     list_tarball_check(tarball)
     open(tarball) do io
-        list_tarball(io, raw=raw, strict=strict)
+        list(io, raw=raw, strict=strict)
     end
 end
 
-list(tarball::IO; raw::Bool=false, strict::Bool=!raw) =
-    list_tarball(tarball, raw=raw, strict=strict)
+function list(tarball::IO; raw::Bool=false, strict::Bool=!raw)
+    raw && strict &&
+        error("`raw=true` and `strict=true` options are incompatible")
+    read_hdr = raw ? read_standard_header : read_header
+    list_tarball(tarball, read_hdr, strict=strict)
+end
 
 """
     extract([ predicate, ] tarball, [ dir ]) -> dir
