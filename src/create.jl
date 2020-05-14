@@ -35,7 +35,7 @@ function write_tarball(
             w += write_tarball(callback, tar, sys_path′, tar_path′, buf=buf)
         end
     else
-        data isa Union{Nothing, AbstractString, IO} ||
+        data isa Union{Nothing, AbstractString, IO, Tuple{IO,Integer}} ||
             error("callback must return nothing, string or IO, got: $(repr(data))")
     end
     if hdr.type != :directory || w == 0
@@ -54,7 +54,7 @@ function write_tarball(
     check_header(hdr)
     w = write_header(tar, hdr, buf=buf)
     if hdr.type == :file
-        data isa Union{AbstractString, IO} ||
+        data isa Union{AbstractString, IO, Tuple{IO,Integer}} ||
             throw(ArgumentError("file record requires path or IO: $(repr(hdr))"))
         w += write_data(tar, data, size=hdr.size, buf=buf)
     end
@@ -223,29 +223,31 @@ function write_data(
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    w = s = 0
-    @assert sizeof(buf) % 512 == 0
-    while !eof(data)
-        s += n = readbytes!(data, buf)
-        if n < sizeof(buf)
-            r = n % 512
-            if r != 0
-                pad = n - r + 512
-                buf[n+1:pad] .= 0
-                n = pad
-            end
-            w += write(tar, view(buf, 1:n))
-        else
-            w += write(tar, buf)
-        end
+    size < 0 &&
+        throw(ArgumentError("cannot write negative data: $size"))
+    w, t = 0, round_up(size)
+    while size > 0
+        b = min(size, length(buf))
+        n = readbytes!(data, buf, b)
+        n < b && eof(data) && error("data file too small: $data")
+        w += write(tar, view(buf, 1:n))
+        size -= n
+        t -= n
     end
-    s == size || error("""
-    data did not have the expected size:
-     - got: $s
-     - expected: $size
-    while extracting tar data from $data.
-    """)
+    @assert size == 0
+    @assert 0 ≤ t < 512
+    t > 0 && (w += write(tar, fill!(view(buf, 1:t), 0)))
     return w
+end
+
+function write_data(
+    tar::IO,
+    (data, pos)::Tuple{IO,Integer};
+    size::Integer,
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    seek(data, pos)
+    write_data(tar, data, size=size, buf=buf)
 end
 
 function write_data(
@@ -256,5 +258,6 @@ function write_data(
 )
     open(file) do data
         write_data(tar, data, size=size, buf=buf)
+        eof(data) || error("data file too large: $data")
     end
 end
