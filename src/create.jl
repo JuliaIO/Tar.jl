@@ -1,28 +1,45 @@
-@static if VERSION < v"1.4.0-DEV"
-    sorted_readdir(args...) = sort!(readdir(args...))
-else
-    sorted_readdir(args...) = readdir(args...)
-end
-
 function create_tarball(
     predicate::Function,
     tar::IO,
-    sys_path::String,       # path in the filesystem
-    tar_path::String = "."; # path in the tarball
+    sys_path::String;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    write_tarball(tar, sys_path, buf=buf) do sys_path, tar_path
+        hdr = path_header(sys_path, tar_path)
+        hdr.type != :directory && return hdr, sys_path
+        paths = Dict{String,String}()
+        for name in readdir(sys_path)
+            sys_path′ = joinpath(sys_path, name)
+            predicate(sys_path′) || continue
+            paths[name] = sys_path′
+        end
+        return hdr, paths
+    end
+end
+
+function write_tarball(
+    callback::Function,
+    tar::IO,
+    sys_path::Any,
+    tar_path::String = ".";
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     w = 0
-    hdr = path_header(sys_path, tar_path)
+    hdr, data = callback(sys_path, tar_path)
     if hdr.type == :directory
-        for name in sorted_readdir(sys_path)
-            sys_path′ = joinpath(sys_path, name)
-            predicate(sys_path′) || continue
+        data isa Union{Nothing, AbstractDict{<:AbstractString}} ||
+            error("callback must return a dict of strings, got: $(repr(data))")
+        data !== nothing && for name in sort!(collect(keys(data)))
+            sys_path′ = data[name]
             tar_path′ = tar_path == "." ? name : "$tar_path/$name"
-            w += create_tarball(predicate, tar, sys_path′, tar_path′, buf=buf)
+            w += write_tarball(callback, tar, sys_path′, tar_path′, buf=buf)
         end
+    else
+        data isa Union{Nothing, AbstractString, IO} ||
+            error("callback must return nothing, string or IO, got: $(repr(data))")
     end
     if hdr.type != :directory || w == 0
-        w += write_tarball(tar, hdr, sys_path, buf=buf)
+        w += write_tarball(tar, hdr, data, buf=buf)
     end
     @assert w > 0
     return w
@@ -31,17 +48,14 @@ end
 function write_tarball(
     tar::IO,
     hdr::Header,
-    data::Union{Nothing, AbstractString, IO} = nothing;
+    data::Any = nothing;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    # error checks
     check_header(hdr)
-    hdr.type != :file || data !== nothing ||
-        throw(ArgumentError("data required for file record: $(repr(hdr))"))
-
-    # write tarball header & data
     w = write_header(tar, hdr, buf=buf)
     if hdr.type == :file
+        data isa Union{AbstractString, IO} ||
+            throw(ArgumentError("file record requires path or IO: $(repr(hdr))"))
         w += write_data(tar, data, size=hdr.size, buf=buf)
     end
     return w
