@@ -74,7 +74,7 @@ function create(
     dir::AbstractString,
     tarball::Union{AbstractString, IO, Nothing} = nothing,
 )
-    create_dir_check(dir)
+    check_create_dir(dir)
     open_write(tarball) do tar
         create_tarball(predicate, tar, dir)
     end
@@ -141,8 +141,8 @@ function extract(
     tarball::Union{AbstractString, IO},
     dir::Union{AbstractString, Nothing} = nothing,
 )
-    extract_tarball_check(tarball)
-    extract_dir_check(dir)
+    check_extract_tarball(tarball)
+    check_extract_dir(dir)
     open_read(tarball) do tar
         if dir !== nothing && ispath(dir)
             extract_tarball(predicate, tar, dir)
@@ -198,7 +198,7 @@ function rewrite(
     old_tarball::Union{AbstractString, IO},
     new_tarball::Union{AbstractString, IO, Nothing} = nothing,
 )
-    old_tarball = rewrite_old_tarball_check(old_tarball)
+    old_tarball = check_rewrite_old_tarball(old_tarball)
     open_read(old_tarball) do old_tar
         open_write(new_tarball) do new_tar
             rewrite_tarball(predicate, old_tar, new_tar)
@@ -274,7 +274,7 @@ function tree_hash(
         algorithm == "git-sha256" ? SHA.SHA256_CTX :
             error("invalid tree hashing algorithm: $algorithm")
 
-    tree_hash_tarball_check(tarball)
+    check_tree_hash_tarball(tarball)
     open_read(tarball) do tar
         git_tree_hash(predicate, tar, HashType, skip_empty)
     end
@@ -295,27 +295,27 @@ end
 
 ## error checking utility functions
 
-create_dir_check(dir::AbstractString) =
+check_create_dir(dir::AbstractString) =
     isdir(dir) || error("""
     not a directory: $dir
     USAGE: create([predicate,] dir, [tarball])
     """)
 
-list_tarball_check(tarball::AbstractString) =
+check_list_tarball(tarball::AbstractString) =
     isfile(tarball) || error("""
     not a file: $tarball
     USAGE: list(tarball)
     """)
 
-extract_tarball_check(tarball::AbstractString) =
+check_extract_tarball(tarball::AbstractString) =
     isfile(tarball) || error("""
     not a file: $tarball
     USAGE: extract([predicate,] tarball, [dir])
     """)
 
-extract_tarball_check(tarball::IO) = nothing
+check_extract_tarball(tarball::IO) = nothing
 
-function extract_dir_check(dir::AbstractString)
+function check_extract_dir(dir::AbstractString)
     st = stat(dir)
     ispath(st) && !isdir(st) &&
         error("""
@@ -329,23 +329,23 @@ function extract_dir_check(dir::AbstractString)
         """)
 end
 
-extract_dir_check(dir::Nothing) = nothing
+check_extract_dir(dir::Nothing) = nothing
 
-rewrite_old_tarball_check(tarball::AbstractString) =
+check_rewrite_old_tarball(tarball::AbstractString) =
     isfile(tarball) ? tarball : rror("""
     not a file: $tarball
     USAGE: rewrite([predicate,] old_tarball, [new_tarball])
     """)
 
-rewrite_old_tarball_check(tarball::IO) =
+check_rewrite_old_tarball(tarball::IO) =
     applicable(seek, tarball, 0) ? tarball : IOBuffer(read(tarball))
 
-tree_hash_tarball_check(tarball::AbstractString) =
+check_tree_hash_tarball(tarball::AbstractString) =
     isfile(tarball) || error("""
     not a file: $tarball
     USAGE: tree_hash([predicate,] tarball)
     """)
 
-tree_hash_tarball_check(tarball::IO) = nothing
+check_tree_hash_tarball(tarball::IO) = nothing
 
 end # module
