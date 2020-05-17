@@ -20,17 +20,17 @@ include("extract.jl")
 
 const true_predicate = _ -> true
 
-open_read(f::Function, tarball::AbstractString) = open(f, tarball)
-open_read(f::Function, tarball::IO) = f(tarball)
+open_read(f::Function, file::AbstractString) = open(f, file)
+open_read(f::Function, file::IO) = f(file)
 
-function open_write(f::Function, tarball::AbstractString)
-    try open(f, tarball, write=true)
+function open_write(f::Function, file::AbstractString)
+    try open(f, file, write=true)
     catch
-        rm(tarball, force=true)
+        rm(file, force=true)
         rethrow()
     end
 end
-open_write(f::Function, tarball::IO) = f(tarball)
+open_write(f::Function, file::IO) = f(file)
 
 ## official API: create, list, extract
 
