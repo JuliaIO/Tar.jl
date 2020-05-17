@@ -18,6 +18,8 @@ include("header.jl")
 include("create.jl")
 include("extract.jl")
 
+## some API utilities ##
+
 const true_predicate = _ -> true
 
 open_read(f::Function, file::AbstractString) = open(f, file)
@@ -29,8 +31,23 @@ function open_write(f::Function, file::AbstractString)
         rm(file, force=true)
         rethrow()
     end
+    return file
 end
-open_write(f::Function, file::IO) = f(file)
+function open_write(f::Function, file::Nothing)
+    file, io = mktemp()
+    try f(io)
+    catch
+        close(io)
+        rm(file, force=true)
+        rethrow()
+    end
+    close(io)
+    return file
+end
+function open_write(f::Function, file::IO)
+    f(file)
+    return file
+end
 
 ## official API: create, list, extract
 
@@ -55,32 +72,20 @@ will be included in the archive.
 function create(
     predicate::Function,
     dir::AbstractString,
-    tarball::Union{AbstractString, IO},
+    tarball::Union{AbstractString, IO, Nothing} = nothing,
 )
     create_dir_check(dir)
     open_write(tarball) do tar
         create_tarball(predicate, tar, dir)
     end
-    return tarball
 end
 
-function create(predicate::Function, dir::AbstractString)
-    create_dir_check(dir)
-    tarball, tar = mktemp()
-    try create_tarball(predicate, tar, dir)
-    catch
-        close(tar)
-        rm(tarball, force=true)
-        rethrow()
-    end
-    close(tar)
-    return tarball
-end
-
-create(dir::AbstractString, tarball::Union{AbstractString, IO}) =
+function create(
+    dir::AbstractString,
+    tarball::Union{AbstractString, IO, Nothing} = nothing,
+)
     create(true_predicate, dir, tarball)
-create(dir::AbstractString) =
-    create(true_predicate, dir)
+end
 
 """
     list(tarball; [ strict = true ]) -> Vector{Header}
@@ -134,46 +139,35 @@ what is extracted during the extraction process.
 function extract(
     predicate::Function,
     tarball::Union{AbstractString, IO},
-    dir::AbstractString,
+    dir::Union{AbstractString, Nothing} = nothing,
 )
     extract_tarball_check(tarball)
     extract_dir_check(dir)
     open_read(tarball) do tar
-        if ispath(dir)
+        if dir !== nothing && ispath(dir)
             extract_tarball(predicate, tar, dir)
         else
-            mkdir(dir)
-            extract_tarball_cleanup_dir(predicate, tar, dir)
+            if dir === nothing
+                dir = mktempdir()
+            else
+                mkdir(dir)
+            end
+            try extract_tarball(predicate, tar, dir)
+            catch
+                chmod(dir, 0o700, recursive=true)
+                rm(dir, force=true, recursive=true)
+                rethrow()
+            end
         end
     end
-    return dir
+    return dir::AbstractString
 end
 
-function extract(predicate::Function, tarball::Union{AbstractString, IO})
-    extract_tarball_check(tarball)
-    open_read(tarball) do tar
-        dir = mktempdir()
-        extract_tarball_cleanup_dir(predicate, tar, dir)
-        return dir
-    end
-end
-
-extract(tarball::Union{AbstractString, IO}, dir::AbstractString) =
-    extract(true_predicate, tarball, dir)
-extract(tarball::Union{AbstractString, IO}) =
-    extract(true_predicate, tarball)
-
-function extract_tarball_cleanup_dir(
-    predicate::Function,
-    tar::IO,
-    dir::AbstractString,
+function extract(
+    tarball::Union{AbstractString, IO},
+    dir::Union{AbstractString, Nothing} = nothing,
 )
-    try extract_tarball(predicate, tar, dir)
-    catch
-        chmod(dir, 0o700, recursive=true)
-        rm(dir, force=true, recursive=true)
-        rethrow()
-    end
+    extract(true_predicate, tarball, dir)
 end
 
 """
@@ -202,7 +196,7 @@ record what content is encountered during the rewrite process.
 function rewrite(
     predicate::Function,
     old_tarball::Union{AbstractString, IO},
-    new_tarball::Union{AbstractString, IO},
+    new_tarball::Union{AbstractString, IO, Nothing} = nothing,
 )
     old_tarball = rewrite_old_tarball_check(old_tarball)
     open_read(old_tarball) do old_tar
@@ -210,38 +204,13 @@ function rewrite(
             rewrite_tarball(predicate, old_tar, new_tar)
         end
     end
-    return new_tarball
-end
-
-function rewrite(
-    predicate::Function,
-    old_tarball::Union{AbstractString, IO},
-)
-    old_tarball = rewrite_old_tarball_check(old_tarball)
-    open_read(old_tarball) do old_tar
-        new_tarball, new_tar = mktemp()
-        try rewrite_tarball(predicate, old_tar, new_tar)
-        catch
-            close(new_tar)
-            rm(new_tarball, force=true)
-            rethrow()
-        end
-        close(new_tar)
-        return new_tarball
-    end
 end
 
 function rewrite(
     old_tarball::Union{AbstractString, IO},
-    new_tarball::Union{AbstractString, IO},
+    new_tarball::Union{AbstractString, IO, Nothing} = nothing,
 )
     rewrite(true_predicate, old_tarball, new_tarball)
-end
-
-function rewrite(
-    old_tarball::Union{AbstractString, IO},
-)
-    rewrite(true_predicate, old_tarball)
 end
 
 """
@@ -316,7 +285,12 @@ function tree_hash(
     algorithm::AbstractString = "git-sha1",
     skip_empty::Bool = false,
 )
-    tree_hash(true_predicate, tarball, algorithm=algorithm, skip_empty=skip_empty)
+    tree_hash(
+        true_predicate,
+        tarball,
+        algorithm = algorithm,
+        skip_empty = skip_empty,
+    )
 end
 
 ## error checking utility functions
@@ -354,6 +328,8 @@ function extract_dir_check(dir::AbstractString)
         USAGE: extract([predicate,] tarball, [dir])
         """)
 end
+
+extract_dir_check(dir::Nothing) = nothing
 
 rewrite_old_tarball_check(tarball::AbstractString) =
     isfile(tarball) ? tarball : rror("""
