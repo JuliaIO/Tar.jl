@@ -231,7 +231,10 @@ const IGNORED_EXTENDED_LOCAL_HEADERS = [
     "uname",
 ]
 
-function read_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE))
+function read_header(
+    io::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
     hdr = read_standard_header(io, buf=buf)
     hdr === nothing && return nothing
     size = path = link = nothing
@@ -284,7 +287,7 @@ function read_extended_metadata(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     n = readbytes!(io, buf, size)
-    n < size && "premature end of tar file"
+    n < size && error("premature end of tar file")
     skip(io, mod(512 - n, 512)) # advance to end of block
     malformed() = error("malformed extended header metadata: $(repr(String(buf)))")
     metadata = Pair{String,String}[]
@@ -321,7 +324,10 @@ function read_extended_metadata(
     return metadata
 end
 
-function read_standard_header(io::IO; buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE))
+function read_standard_header(
+    io::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
     header_view = view(buf, 1:512)
     view_read!(io, header_view)
     all(iszero, header_view) && return nothing
