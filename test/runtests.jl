@@ -527,3 +527,54 @@ end
     rm(alternate)
     rm(reference)
 end
+
+@testset "API: skeletons" begin
+    # make some tarballs to test with
+    tarballs = String[]
+    let dir = make_test_dir()
+        push!(tarballs, Tar.create(dir))
+        rm(dir, recursive=true)
+    end
+    push!(tarballs, make_test_tarball()[1])
+    Sys.iswindows() || push!(tarballs, make_test_tarball() do root
+        tarball = tempname()
+        tar(gtar -> run(`$gtar --format=gnu -C $root -cf $tarball .`))
+        return tarball
+    end[1])
+    for i = 1:length(tarballs)
+        tarball = tempname()
+        cp(tarballs[1], tarball)
+        open(tarball, append=true) do io
+            write(io, zeros(UInt8, 1024))
+        end
+        push!(tarballs, tarball)
+    end
+
+    for tarball in tarballs
+        reference = read(tarball)
+        # check that tarballs are recreated exactly
+        skeleton = tempname()
+        @test !ispath(skeleton)
+        dir = Tar.extract(tarball, skeleton=skeleton)
+        @test Tar.list(tarball) == Tar.list(skeleton)
+        @test isfile(skeleton)
+        tarball′ = Tar.create(dir, skeleton=skeleton)
+        @test reference == read(tarball′)
+        rm(tarball′)
+        # check that passing an IO handle to create works
+        open(skeleton) do io
+            tarball′ = Tar.create(dir, skeleton=io)
+            @test reference == read(tarball′)
+            rm(tarball′)
+        end
+        # check that extracting skeleton IO is the same
+        mktemp() do skeleton′, io
+            Tar.extract(tarball, skeleton=io)
+            @test read(skeleton) == read(skeleton′)
+        end
+        rm(skeleton)
+    end
+
+    # cleanup
+    foreach(rm, tarballs)
+end
