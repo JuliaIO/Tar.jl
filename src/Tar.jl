@@ -104,16 +104,29 @@ would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
 """
 function list(
+    callback::Function,
     tarball::Union{AbstractString, IO};
-    raw::Bool=false,
-    strict::Bool=!raw,
+    raw::Bool = false,
+    strict::Bool = !raw,
 )
     raw && strict &&
         error("`raw=true` and `strict=true` options are incompatible")
     read_hdr = raw ? read_standard_header : read_header
     open_read(tarball) do tar
-        list_tarball(tar, read_hdr, strict=strict)
+        iterate_headers(callback, tar, read_hdr, strict=strict)
     end
+end
+
+function list(
+    tarball::Union{AbstractString, IO};
+    raw::Bool = false,
+    strict::Bool = !raw,
+)
+    headers = Header[]
+    list(tarball, raw=raw, strict=strict) do hdr
+        push!(headers, hdr)
+    end
+    return headers
 end
 
 """
