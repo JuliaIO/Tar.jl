@@ -388,16 +388,29 @@ Sys.iswindows() && pop!(test_dir_paths)
     end
 end
 
+# uses Tar.list(callback, tarball) API
+function tar_count(tarball; kwargs...)
+    n = 0
+    Tar.list(tarball; kwargs...) do hdr
+        n += 1
+    end
+    return n
+end
+
 @testset "API: list" begin
     dir = make_test_dir()
     tarball = Tar.create(dir)
     rm(dir, recursive=true)
+    n = length(test_dir_paths)
+
     # list(tarball::String)
     headers = Tar.list(tarball)
     @test test_dir_paths == [hdr.path for hdr in headers]
+    @test n == tar_count(tarball)
     # list(tarball::IO)
     headers = open(Tar.list, tarball)
     @test test_dir_paths == [hdr.path for hdr in headers]
+    @test n == open(tar_count, tarball)
     # add a sketchy entry to tarball
     open(tarball, append=true) do io
         Tar.write_header(io, Tar.Header("/bad", :file, 0o644, 0, ""))
@@ -406,17 +419,27 @@ end
     # list(tarball::String; strict=true|false)
     @test_throws ErrorException Tar.list(tarball)
     @test_throws ErrorException Tar.list(tarball, strict=true)
+    @test_throws ErrorException tar_count(tarball)
+    @test_throws ErrorException tar_count(tarball, strict=true)
     headers = Tar.list(tarball, strict=false)
     @test paths == [hdr.path for hdr in headers]
+    @test n + 1 == tar_count(tarball, strict=false)
     # list(tarball::IO; strict=true|false)
     @test_throws ErrorException open(Tar.list, tarball)
     @test_throws ErrorException open(tarball) do io
         Tar.list(io, strict=true)
     end
+    @test_throws ErrorException open(tar_count, tarball)
+    @test_throws ErrorException open(tarball) do io
+        tar_count(io, strict=true)
+    end
     headers = open(tarball) do io
         Tar.list(io, strict=false)
     end
     @test paths == [hdr.path for hdr in headers]
+    @test n + 1 == open(tarball) do io
+        tar_count(io, strict=false)
+    end
 end
 
 @testset "API: extract" begin

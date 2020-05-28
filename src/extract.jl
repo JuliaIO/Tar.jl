@@ -6,21 +6,20 @@ else
     view_read!(io, buf::SubArray{UInt8}) = read!(io, buf)
 end
 
-function list_tarball(
+function iterate_headers(
+    callback::Function,
     tar::IO,
     read_hdr::Function = read_standard_header;
     strict::Bool = true,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    headers = Header[]
     while !eof(tar)
         hdr = read_hdr(tar, buf=buf)
         hdr === nothing && break
         strict && check_header(hdr)
-        push!(headers, hdr)
+        callback(hdr)
         skip_data(tar, hdr.size)
     end
-    return headers
 end
 
 function extract_tarball(
