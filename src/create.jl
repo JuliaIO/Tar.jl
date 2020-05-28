@@ -1,10 +1,10 @@
 function create_tarball(
     predicate::Function,
     tar::IO,
-    sys_path::String;
+    root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    write_tarball(tar, sys_path, buf=buf) do sys_path, tar_path
+    write_tarball(tar, root, buf=buf) do sys_path, tar_path
         hdr = path_header(sys_path, tar_path)
         hdr.type != :directory && return hdr, sys_path
         paths = Dict{String,String}()

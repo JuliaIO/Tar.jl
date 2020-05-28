@@ -49,7 +49,7 @@ function open_write(f::Function, file::IO)
     return file
 end
 
-## official API: create, list, extract
+## official API: create, list, extract, rewrite, tree_hash
 
 """
     create([ predicate, ] dir, [ tarball ]) -> tarball
@@ -332,7 +332,7 @@ end
 check_extract_dir(dir::Nothing) = nothing
 
 check_rewrite_old_tarball(tarball::AbstractString) =
-    isfile(tarball) ? tarball : rror("""
+    isfile(tarball) ? tarball : error("""
     not a file: $tarball
     USAGE: rewrite([predicate,] old_tarball, [new_tarball])
     """)
