@@ -258,10 +258,11 @@ function read_header(
             end
         elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
             # GNU long name or link header
-            value = read_data(io, size=hdr.size, buf=buf)
-            value[end] == '\0' ||
-                error("malformed GNU long header (trailing `\0` expected): $(repr(value))")
-            value = chop(value)
+            data = read_data(io, size=hdr.size, buf=buf)
+            data[end] == 0 ||
+                error("malformed GNU long header (trailing `\\0` expected): " *
+                      repr(String(data)))
+            value = String(@view data[1:end-1])
             hdr.type == :L && (path = value)
             hdr.type == :K && (link = value)
         else
@@ -286,39 +287,38 @@ function read_extended_metadata(
     size::Integer;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    n = readbytes!(io, buf, size)
-    n < size && error("premature end of tar file")
-    skip(io, mod(512 - n, 512)) # advance to end of block
-    malformed() = error("malformed extended header metadata: $(repr(String(buf)))")
+    data = read_data(io, size=size, buf=buf)
+    malformed() = error("malformed extended header metadata: $(repr(String(data)))")
     metadata = Pair{String,String}[]
     i = 0
-    while i < n
+    while i < size
         j, m = i, 0
-        while j ≤ n
-            byte = buf[j += 1]
+        while j ≤ size
+            byte = data[j += 1]
             byte == UInt8(' ') && break
             UInt8('0') ≤ byte ≤ UInt8('9') || malformed()
             m, fm = mul_with_overflow(m, 10)
             m, fa = add_with_overflow(m, Int(byte - UInt8('0')))
-            fm | fa && error("extended header record size too large: $(repr(buf))")
+            fm | fa &&
+                error("extended header record size too large: $(repr(String(data)))")
         end
         k, l = j, i + m
         while k ≤ l
-            byte = buf[k += 1]
+            byte = data[k += 1]
             byte == UInt8('=') && break
         end
-        # buf[i+1:j-1] is the length in decimal
-        # buf[j+1:k-1] is the key string
-        # buf[k+1:l-1] is the value string
-        # buf[i] is end of previous
-        # buf[j] is ` ` (space)
-        # buf[k] is `=` (equals)
-        # buf[l] is `\n` (newline)
+        # data[i+1:j-1] is the length in decimal
+        # data[j+1:k-1] is the key string
+        # data[k+1:l-1] is the value string
+        # data[i] is end of previous
+        # data[j] is ` ` (space)
+        # data[k] is `=` (equals)
+        # data[l] is `\n` (newline)
         i+1 < j < k < l || malformed()
-        @assert buf[j] == UInt8(' ')
-        @assert buf[k] == UInt8('=')
-        buf[l] == UInt('\n') || malformed()
-        @views push!(metadata, String(buf[j+1:k-1]) => String(buf[k+1:l-1]))
+        @assert data[j] == UInt8(' ')
+        @assert data[k] == UInt8('=')
+        data[l] == UInt('\n') || malformed()
+        @views push!(metadata, String(data[j+1:k-1]) => String(data[k+1:l-1]))
         i = l
     end
     return metadata
@@ -425,12 +425,16 @@ function read_data(
     end
 end
 
+# WARNING: this returns a view into `buf` so you must either use
+# the result before making another call using `buf` or make a copy
 function read_data(
     tar::IO;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)::String
-    io = IOBuffer(sizehint=size)
-    read_data(tar, io, size=size, buf=buf)
-    return String(take!(io))
+)::AbstractVector{UInt8}
+    n = round_up(size)
+    length(buf) < n && resize!(buf, nextpow(2, n))
+    r = readbytes!(tar, buf, n)
+    r < n && error("premature end of tar file")
+    return view(buf, 1:size)
 end
