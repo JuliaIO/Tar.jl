@@ -584,6 +584,13 @@ end
         end
         @test ref == read(tarball)
         rm(tarball)
+        # rewrite(old::String, new::IO)
+        tarball = tempname()
+        open(tarball, write=true) do io
+            Tar.rewrite(alternate, io)
+        end
+        @test ref == read(tarball)
+        rm(tarball)
         # rewrite(old::IO, new::IO)
         tarball = tempname()
         open(alternate) do old
@@ -625,6 +632,13 @@ end
         tarball = tempname()
         open(alternate) do io
             Tar.rewrite(predicate, io, tarball)
+        end
+        @test ref == read(tarball)
+        rm(tarball)
+        # rewrite(predicate::Functoin, old::String, new::IO)
+        tarball = tempname()
+        open(tarball, write=true) do io
+            Tar.rewrite(predicate, alternate, io)
         end
         @test ref == read(tarball)
         rm(tarball)
