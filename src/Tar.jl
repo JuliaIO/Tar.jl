@@ -89,13 +89,18 @@ end
 
 """
     list(tarball; [ strict = true ]) -> Vector{Header}
+    list(callback, tarball; [ strict = true ])
 
+        callback  :: Header --> Bool
         tarball   :: Union{AbstractString, IO}
         strict    :: Bool
 
-List the contents of a tar archive ("tarball") located at the path `tarball`.
-If `tarball` is an IO handle, read the tar contents from that stream. Returns
-a vector of `Header` structs. See [`Header`](@ref) for details.
+List the contents of a tar archive ("tarball") located at the path `tarball`. If
+`tarball` is an IO handle, read the tar contents from that stream. Returns a
+vector of `Header` structs. See [`Header`](@ref) for details. If a `callback` is
+provided then instead of returning a vector of headers, the callback is called
+on each `Header`. This can be useful if the number of items in the tarball is
+large or if you want examine items prior to an error in the tarball.
 
 By default `list` will error if it encounters any tarball contents which the
 `extract` function would refuse to extract. With `strict=false` it will skip
@@ -104,16 +109,29 @@ would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
 """
 function list(
+    callback::Function,
     tarball::Union{AbstractString, IO};
-    raw::Bool=false,
-    strict::Bool=!raw,
+    raw::Bool = false,
+    strict::Bool = !raw,
 )
     raw && strict &&
         error("`raw=true` and `strict=true` options are incompatible")
     read_hdr = raw ? read_standard_header : read_header
     open_read(tarball) do tar
-        list_tarball(tar, read_hdr, strict=strict)
+        iterate_headers(callback, tar, read_hdr, strict=strict)
     end
+end
+
+function list(
+    tarball::Union{AbstractString, IO};
+    raw::Bool = false,
+    strict::Bool = !raw,
+)
+    headers = Header[]
+    list(tarball, raw=raw, strict=strict) do hdr
+        push!(headers, hdr)
+    end
+    return headers
 end
 
 """
