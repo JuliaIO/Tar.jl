@@ -15,6 +15,7 @@ function create_tarball(
         end
         return hdr, paths
     end
+    write_footer(tar)
 end
 
 function rewrite_tarball(
@@ -50,6 +51,7 @@ function rewrite_tarball(
             return hdr′, data
         end
     end
+    write_footer(tar)
 end
 
 function write_tarball(
@@ -250,6 +252,14 @@ function write_standard_header(
     w = write(tar, header_view)
     @assert w == 512
     return w
+end
+
+function write_footer(
+    tar::IO,
+    size::Integer = 1024;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    write(tar, fill!(view(buf, 1:size), 0))
 end
 
 function write_data(
