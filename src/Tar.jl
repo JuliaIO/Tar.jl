@@ -45,7 +45,10 @@ function open_write(f::Function, file::Nothing)
     return file
 end
 function open_write(f::Function, file::IO)
-    f(file)
+    try f(file)
+    finally
+        flush(file)
+    end
     return file
 end
 

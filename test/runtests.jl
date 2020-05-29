@@ -207,7 +207,7 @@ if !Sys.iswindows()
     @testset "GNU extensions" begin
         # make a test GNU tarball with GNU `tar` from Tar_jll instead of Tar.create
         tarball, hash = make_test_tarball() do root
-            tarball, io = mktemp(); close(io)
+            tarball = tempname()
             tar(gtar -> run(`$gtar --format=gnu -C $root -cf $tarball .`))
             return tarball
         end
@@ -358,8 +358,7 @@ Sys.iswindows() && pop!(test_dir_paths)
         rm(tarball)
         # create(dir::String, tarball::IO)
         mktemp() do tarball, io
-            Tar.create(dir, tarball)
-            close(io)
+            Tar.create(dir, io)
             @test read(tarball) == bytes
         end
         rm(dir, recursive=true)
@@ -380,8 +379,7 @@ Sys.iswindows() && pop!(test_dir_paths)
         rm(tarball)
         # create(predicate::Function, dir::String, tarball::IO)
         mktemp() do tarball, io
-            Tar.create(predicate, dir, tarball)
-            close(io)
+            Tar.create(predicate, dir, io)
             @test read(tarball) == bytes
         end
         rm(dir, recursive=true)
@@ -547,7 +545,7 @@ end
     if !Sys.iswindows()
         # alternate tarball made by GNU tar
         alternate, hash₂ = make_test_tarball() do root
-            tarball, io = mktemp(); close(io)
+            tarball = tempname()
             tar(gtar -> run(`$gtar -C $root -cf $tarball .`))
             return tarball
         end
@@ -584,14 +582,21 @@ end
         end
         @test ref == read(tarball)
         rm(tarball)
+        # rewrite(old::String, new::IO)
+        tarball = tempname()
+        open(tarball, write=true) do io
+            Tar.rewrite(alternate, io)
+            @test ref == read(tarball)
+        end
+        rm(tarball)
         # rewrite(old::IO, new::IO)
         tarball = tempname()
         open(alternate) do old
             open(tarball, write=true) do new
                 Tar.rewrite(old, new)
             end
+            @test ref == read(tarball)
         end
-        @test ref == read(tarball)
         rm(tarball)
     end
 
@@ -628,14 +633,21 @@ end
         end
         @test ref == read(tarball)
         rm(tarball)
+        # rewrite(predicate::Functoin, old::String, new::IO)
+        tarball = tempname()
+        open(tarball, write=true) do io
+            Tar.rewrite(predicate, alternate, io)
+            @test ref == read(tarball)
+        end
+        rm(tarball)
         # rewrite(predicate::Function, old::IO, new::IO)
         tarball = tempname()
         open(alternate) do old
             open(tarball, write=true) do new
                 Tar.rewrite(predicate, old, new)
             end
+            @test ref == read(tarball)
         end
-        @test ref == read(tarball)
         rm(tarball)
     end
 
