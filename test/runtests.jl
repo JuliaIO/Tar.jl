@@ -207,7 +207,7 @@ if !Sys.iswindows()
     @testset "GNU extensions" begin
         # make a test GNU tarball with GNU `tar` from Tar_jll instead of Tar.create
         tarball, hash = make_test_tarball() do root
-            tarball, io = mktemp(); close(io)
+            tarball = tempname()
             tar(gtar -> run(`$gtar --format=gnu -C $root -cf $tarball .`))
             return tarball
         end
@@ -547,7 +547,7 @@ end
     if !Sys.iswindows()
         # alternate tarball made by GNU tar
         alternate, hash₂ = make_test_tarball() do root
-            tarball, io = mktemp(); close(io)
+            tarball = tempname()
             tar(gtar -> run(`$gtar -C $root -cf $tarball .`))
             return tarball
         end
