@@ -359,7 +359,6 @@ Sys.iswindows() && pop!(test_dir_paths)
         # create(dir::String, tarball::IO)
         mktemp() do tarball, io
             Tar.create(dir, io)
-            close(io)
             @test read(tarball) == bytes
         end
         rm(dir, recursive=true)
@@ -381,7 +380,6 @@ Sys.iswindows() && pop!(test_dir_paths)
         # create(predicate::Function, dir::String, tarball::IO)
         mktemp() do tarball, io
             Tar.create(predicate, dir, io)
-            close(io)
             @test read(tarball) == bytes
         end
         rm(dir, recursive=true)
@@ -588,8 +586,8 @@ end
         tarball = tempname()
         open(tarball, write=true) do io
             Tar.rewrite(alternate, io)
+            @test ref == read(tarball)
         end
-        @test ref == read(tarball)
         rm(tarball)
         # rewrite(old::IO, new::IO)
         tarball = tempname()
@@ -597,8 +595,8 @@ end
             open(tarball, write=true) do new
                 Tar.rewrite(old, new)
             end
+            @test ref == read(tarball)
         end
-        @test ref == read(tarball)
         rm(tarball)
     end
 
@@ -639,8 +637,8 @@ end
         tarball = tempname()
         open(tarball, write=true) do io
             Tar.rewrite(predicate, alternate, io)
+            @test ref == read(tarball)
         end
-        @test ref == read(tarball)
         rm(tarball)
         # rewrite(predicate::Function, old::IO, new::IO)
         tarball = tempname()
@@ -648,8 +646,8 @@ end
             open(tarball, write=true) do new
                 Tar.rewrite(predicate, old, new)
             end
+            @test ref == read(tarball)
         end
-        @test ref == read(tarball)
         rm(tarball)
     end
 
