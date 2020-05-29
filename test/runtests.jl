@@ -358,7 +358,7 @@ Sys.iswindows() && pop!(test_dir_paths)
         rm(tarball)
         # create(dir::String, tarball::IO)
         mktemp() do tarball, io
-            Tar.create(dir, tarball)
+            Tar.create(dir, io)
             close(io)
             @test read(tarball) == bytes
         end
@@ -380,7 +380,7 @@ Sys.iswindows() && pop!(test_dir_paths)
         rm(tarball)
         # create(predicate::Function, dir::String, tarball::IO)
         mktemp() do tarball, io
-            Tar.create(predicate, dir, tarball)
+            Tar.create(predicate, dir, io)
             close(io)
             @test read(tarball) == bytes
         end
