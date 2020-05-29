@@ -9,7 +9,7 @@ end
 function iterate_headers(
     callback::Function,
     tar::IO,
-    read_hdr::Function = read_standard_header;
+    read_hdr::Function;
     strict::Bool = true,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
@@ -170,9 +170,10 @@ function read_tarball(
     tar::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
+    globals = Dict{String,String}()
     links = Set{String}()
     while !eof(tar)
-        hdr = read_header(tar, buf=buf)
+        hdr = read_header(tar, globals, buf=buf)
         hdr === nothing && break
         # check if we should extract or skip
         if !predicate(hdr)
@@ -207,52 +208,23 @@ function read_tarball(
     end
 end
 
-const IGNORED_EXTENDED_GLOBAL_HEADERS = [
-    "charset",
-    "comment",
-    "gid",
-    "gname",
-    "hdrcharset",
-    "uid",
-    "uname",
-]
-
-const IGNORED_EXTENDED_LOCAL_HEADERS = [
-    "atime",
-    "charset",
-    "comment",
-    "ctime", # not in POSIX standard but emitted by GNU tar in POSIX mode
-    "gid",
-    "gname",
-    "hdrcharset",
-    "mtime",
-    "uid",
-    "uname",
-]
-
 function read_header(
-    io::IO;
+    io::IO,
+    globals::Dict{String,String} = Dict{String,String}();
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     hdr = read_standard_header(io, buf=buf)
     hdr === nothing && return nothing
-    size = path = link = nothing
+    # process zero or more extended headers
+    metadata = copy(globals)
     while true
-        if hdr.type in (:x, :g) # POSIX extended headers
-            metadata = read_extended_metadata(io, hdr.size, buf=buf)
-            ignored_headers = hdr.type == :x ? IGNORED_EXTENDED_LOCAL_HEADERS :
-                                               IGNORED_EXTENDED_GLOBAL_HEADERS
-            for (key, value) in metadata
-                if hdr.type == :x && key == "size"
-                    size = tryparse(UInt64, value)
-                    size === nothing &&
-                        error("invalid extended header size value: $(repr(value))")
-                elseif hdr.type == :x && key == "path"
-                    path = value
-                elseif hdr.type == :x && key == "linkpath"
-                    link = value
-                elseif key ∉ ignored_headers
-                    error("unexpected extended ($(hdr.type)) header: $(repr(key))")
+        if hdr.type in (:g, :x) # POSIX extended headers
+            read_extended_metadata(io, hdr.size, buf=buf) do key, val
+                if key in ("size", "path", "linkpath")
+                    if hdr.type == :g
+                        globals[key] = val
+                    end
+                    metadata[key] = val
                 end
             end
         elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
@@ -261,34 +233,38 @@ function read_header(
             data[end] == 0 ||
                 error("malformed GNU long header (trailing `\\0` expected): " *
                       repr(String(data)))
-            value = String(@view data[1:end-1])
-            hdr.type == :L && (path = value)
-            hdr.type == :K && (link = value)
+            key = hdr.type == :L ? "path" : "linkpath"
+            metadata[key] = String(@view data[1:end-1])
         else
             break # non-extension header block
         end
         hdr = read_standard_header(io, buf=buf)
         hdr === nothing && error("premature end of tar file")
     end
-    return Header(
-        something(path, hdr.path),
-        hdr.type,
-        hdr.mode,
-        something(size, hdr.size),
-        something(link, hdr.link),
-    )
+    # determine final values for size, path & link
+    size = hdr.size
+    if "size" in keys(metadata)
+        val = metadata["size"]
+        size = tryparse(UInt64, val)
+        size === nothing &&
+            error("invalid extended header size value: $(repr(val))")
+    end
+    path = get(metadata, "path", hdr.path)
+    link = get(metadata, "linkpath", hdr.link)
+    # construct and return Header object
+    return Header(path, hdr.type, hdr.mode, size, link)
 end
 
 using Base.Checked: mul_with_overflow, add_with_overflow
 
 function read_extended_metadata(
+    callback::Function,
     io::IO,
     size::Integer;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     data = read_data(io, size=size, buf=buf)
     malformed() = error("malformed extended header metadata: $(repr(String(data)))")
-    metadata = Pair{String,String}[]
     i = 0
     while i < size
         j, m = i, 0
@@ -317,10 +293,12 @@ function read_extended_metadata(
         @assert data[j] == UInt8(' ')
         @assert data[k] == UInt8('=')
         data[l] == UInt('\n') || malformed()
-        @views push!(metadata, String(data[j+1:k-1]) => String(data[k+1:l-1]))
-        i = l
+        i = l # next starting point
+        # pass key, value back to caller
+        key = String(@view data[j+1:k-1])
+        val = String(@view data[k+1:l-1])
+        callback(key, val)
     end
-    return metadata
 end
 
 function read_standard_header(

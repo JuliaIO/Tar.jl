@@ -119,7 +119,10 @@ function list(
 )
     raw && strict &&
         error("`raw=true` and `strict=true` options are incompatible")
-    read_hdr = raw ? read_standard_header : read_header
+    read_hdr = raw ? read_standard_header :
+        let globals = Dict{String,String}()
+            (tar; buf) -> read_header(tar, globals, buf=buf)
+        end
     open_read(tarball) do tar
         iterate_headers(callback, tar, read_hdr, strict=strict)
     end
