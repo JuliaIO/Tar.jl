@@ -1,5 +1,9 @@
 using Test
-using Tar_jll
+
+if !Sys.iswindows()
+    using Tar_jll
+    const gtar = Tar_jll.tar
+end
 
 import Tar
 import Pkg.GitTools
