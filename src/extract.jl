@@ -30,7 +30,10 @@ function iterate_headers(
         hdr === nothing && break
         strict && check_header(hdr)
         callback(hdr)
-        skeleton || skip_data(tar, hdr.size)
+        if !skeleton || hdr.type in (:g, :x) ||
+            hdr.path == "././@LongLink" && hdr.type in (:L, :K)
+            skip_data(tar, hdr.size)
+        end
     end
 end
 

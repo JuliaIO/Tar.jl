@@ -560,23 +560,30 @@ end
         skeleton = tempname()
         @test !ispath(skeleton)
         dir = Tar.extract(tarball, skeleton=skeleton)
+        @test isfile(skeleton)
+        # test skeleton listing
         hdrs = Tar.list(tarball)
         @test hdrs == Tar.list(skeleton)
+        @test hdrs == open(Tar.list, skeleton)
         if flag && !Sys.iswindows()
+            # GNU tar can list skeleton files of tarballs we generated
             paths = sort!([hdr.path for hdr in hdrs])
             @test paths == sort!(gtar(gtar -> readlines(`$gtar -tf $tarball`)))
         end
-        @test isfile(skeleton)
+        hdrs = Tar.list(tarball, raw=true)
+        @test hdrs == Tar.list(skeleton, raw=true)
+        @test hdrs == open(io -> Tar.list(io, raw=true), skeleton)
+        # test reconstruction from skeleton
         tarball′ = Tar.create(dir, skeleton=skeleton)
         @test reference == read(tarball′)
         rm(tarball′)
-        # check that passing an IO handle to create works
+        # check that reading skeleton from IO works
         open(skeleton) do io
             tarball′ = Tar.create(dir, skeleton=io)
             @test reference == read(tarball′)
             rm(tarball′)
         end
-        # check that extracting skeleton IO is the same
+        # check that extracting skeleton to IO works
         mktemp() do skeleton′, io
             Tar.extract(tarball, skeleton=io)
             @test read(skeleton) == read(skeleton′)
