@@ -55,11 +55,12 @@ end
 ## official API: create, list, extract, rewrite, tree_hash
 
 """
-    create([ predicate, ] dir, [ tarball ]) -> tarball
+    create([ predicate, ] dir, [ tarball ]; [ skeleton ]) -> tarball
 
         predicate :: String --> Bool
         dir       :: AbstractString
         tarball   :: Union{AbstractString, IO}
+        skeleton  :: Union{AbstractString, IO}
 
 Create a tar archive ("tarball") of the directory `dir`. The resulting archive
 is written to the path `tarball` or if no path is specified, a temporary path is
@@ -71,23 +72,42 @@ encountered while recursively searching `dir` and `path` is only included in the
 tarball if `predicate(path)` is true. If `predicate(path)` returns false for a
 directory, then the directory is excluded entirely: nothing under that directory
 will be included in the archive.
+
+If the `skeleton` keyword is passed then the file or IO handle given is used as
+a "skeleton" to generate the tarball. You create a skeleton file by passing the
+`skeleton` keyword to the `extract` command. If `create` is called with that
+skeleton file and the extracted files haven't changed, an identical tarball is
+recreated. The `skeleton` and `predicate` arguments cannot be used together.
 """
 function create(
     predicate::Function,
     dir::AbstractString,
-    tarball::Union{AbstractString, IO, Nothing} = nothing,
+    tarball::Union{AbstractString, IO, Nothing} = nothing;
+    skeleton::Union{AbstractString, IO, Nothing} = nothing,
 )
     check_create_dir(dir)
-    open_write(tarball) do tar
-        create_tarball(predicate, tar, dir)
+    if skeleton === nothing
+        open_write(tarball) do tar
+            create_tarball(predicate, tar, dir)
+        end
+    else
+        predicate === true_predicate ||
+            error("create: predicate and skeleton cannot be used together")
+        check_create_skeleton(skeleton)
+        open_read(skeleton) do skeleton
+            open_write(tarball) do tar
+                recreate_tarball(tar, dir, skeleton)
+            end
+        end
     end
 end
 
 function create(
     dir::AbstractString,
-    tarball::Union{AbstractString, IO, Nothing} = nothing,
+    tarball::Union{AbstractString, IO, Nothing} = nothing;
+    skeleton::Union{AbstractString, IO, Nothing} = nothing,
 )
-    create(true_predicate, dir, tarball)
+    create(true_predicate, dir, tarball, skeleton=skeleton)
 end
 
 """
@@ -110,6 +130,10 @@ By default `list` will error if it encounters any tarball contents which the
 these checks and list all the the contents of the tar file whether `extract`
 would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
+
+If the `tarball` argument is a skeleton file (see `extract` and `create`) then
+`list` will detect that from the file header and appropriately list or iterate
+the headers of the skeleton file.
 """
 function list(
     callback::Function,
@@ -141,11 +165,12 @@ function list(
 end
 
 """
-    extract([ predicate, ] tarball, [ dir ]) -> dir
+    extract([ predicate, ] tarball, [ dir ]; [ skeleton ]) -> dir
 
         predicate :: Header --> Bool
         tarball   :: Union{AbstractString, IO}
         dir       :: AbstractString
+        skeleton  :: Union{AbstractString, IO}
 
 Extract a tar archive ("tarball") located at the path `tarball` into the
 directory `dir`. If `tarball` is an IO object instead of a path, then the
@@ -159,24 +184,37 @@ is encountered while extracting `tarball` and the entry is only extracted if the
 `predicate(hdr)` is true. This can be used to selectively extract only parts of
 an archive, to skip entries that cause `extract` to throw an error, or to record
 what is extracted during the extraction process.
+
+If the `skeleton` keyword is passed then a "skeleton" of the extracted tarball
+is written to the file or IO handle given. This skeleton file can be used to
+recreate an identical tarball by passing the `skeleton` keyword to the `create`
+function. The `skeleton` and `predicate` arguments cannot be used together.
 """
 function extract(
     predicate::Function,
     tarball::Union{AbstractString, IO},
-    dir::Union{AbstractString, Nothing} = nothing,
+    dir::Union{AbstractString, Nothing} = nothing;
+    skeleton::Union{AbstractString, IO, Nothing} = nothing,
 )
+    predicate === true_predicate || skeleton === nothing ||
+        error("extract: predicate and skeleton cannot be used together")
+    skeleton = something(skeleton, devnull)
     check_extract_tarball(tarball)
     check_extract_dir(dir)
     open_read(tarball) do tar
         if dir !== nothing && ispath(dir)
-            extract_tarball(predicate, tar, dir)
+            open_write(skeleton) do skeleton
+                extract_tarball(predicate, tar, dir, skeleton=skeleton)
+            end
         else
             if dir === nothing
                 dir = mktempdir()
             else
                 mkdir(dir)
             end
-            try extract_tarball(predicate, tar, dir)
+            try open_write(skeleton) do skeleton
+                    extract_tarball(predicate, tar, dir, skeleton=skeleton)
+                end
             catch
                 chmod(dir, 0o700, recursive=true)
                 rm(dir, force=true, recursive=true)
@@ -189,9 +227,10 @@ end
 
 function extract(
     tarball::Union{AbstractString, IO},
-    dir::Union{AbstractString, Nothing} = nothing,
+    dir::Union{AbstractString, Nothing} = nothing;
+    skeleton::Union{AbstractString, IO, Nothing} = nothing,
 )
-    extract(true_predicate, tarball, dir)
+    extract(true_predicate, tarball, dir, skeleton=skeleton)
 end
 
 """
@@ -324,6 +363,14 @@ check_create_dir(dir::AbstractString) =
     not a directory: $dir
     USAGE: create([predicate,] dir, [tarball])
     """)
+
+check_create_skeleton(skeleton::AbstractString) =
+    isfile(skeleton) || error("""
+    not a file: $skeleton
+    USAGE: create(skeleton, dir, [tarball]; [skeleton = <file>])
+    """)
+
+check_create_skeleton(skeleton::IO) = nothing
 
 check_list_tarball(tarball::AbstractString) =
     isfile(tarball) || error("""

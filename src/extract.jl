@@ -13,12 +13,27 @@ function iterate_headers(
     strict::Bool = true,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
+    if !eof(tar)
+        mark(tar)
+        hdr = read_standard_header(tar, buf=buf)
+        if hdr.type == :g && hdr.path == SKELETON_MAGIC
+            skip_data(tar, hdr.size)
+            skeleton = true
+            unmark(tar)
+        else
+            skeleton = false
+            reset(tar)
+        end
+    end
     while !eof(tar)
         hdr = read_hdr(tar, buf=buf)
         hdr === nothing && break
         strict && check_header(hdr)
         callback(hdr)
-        skip_data(tar, hdr.size)
+        if !skeleton || hdr.type in (:g, :x) ||
+            hdr.path == "././@LongLink" && hdr.type in (:L, :K)
+            skip_data(tar, hdr.size)
+        end
     end
 end
 
@@ -27,8 +42,9 @@ function extract_tarball(
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    skeleton::IO = devnull,
 )
-    read_tarball(predicate, tar; buf=buf) do hdr, parts
+    read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         # get the file system version of the path
         sys_path = reduce(joinpath, init=root, parts)
         # delete anything that's there already
@@ -164,16 +180,40 @@ function git_file_hash(
     return bytes2hex(SHA.digest!(ctx))
 end
 
+const SKELETON_MAGIC = "%!skeleton:\x83\xe6\xa8\xfe"
+
+function write_skeleton_header(
+    skeleton::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    skeleton === devnull || write_extended_header(
+        skeleton, type = :g, name = SKELETON_MAGIC, buf = buf,
+        ["comment" => "Tar.jl skeleton file", "size" => "0"],
+    )
+end
+
+function check_skeleton_header(
+    skeleton::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    hdr = read_standard_header(skeleton, buf=buf)
+    hdr.type == :g && hdr.path == SKELETON_MAGIC ||
+        error("not a skeleton file: $skeleton")
+    skip_data(skeleton, hdr.size)
+end
+
 function read_tarball(
     callback::Function,
     predicate::Function,
     tar::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    skeleton::IO = devnull,
 )
+    write_skeleton_header(skeleton, buf=buf)
     globals = Dict{String,String}()
     links = Set{String}()
     while !eof(tar)
-        hdr = read_header(tar, globals, buf=buf)
+        hdr = read_header(tar, globals, buf=buf, tee=skeleton)
         hdr === nothing && break
         # check if we should extract or skip
         if !predicate(hdr)
@@ -212,14 +252,15 @@ function read_header(
     io::IO,
     globals::Dict{String,String} = Dict{String,String}();
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    tee::IO = devnull,
 )
-    hdr = read_standard_header(io, buf=buf)
+    hdr = read_standard_header(io, buf=buf, tee=tee)
     hdr === nothing && return nothing
     # process zero or more extended headers
     metadata = copy(globals)
     while true
         if hdr.type in (:g, :x) # POSIX extended headers
-            read_extended_metadata(io, hdr.size, buf=buf) do key, val
+            read_extended_metadata(io, hdr.size, buf=buf, tee=tee) do key, val
                 if key in ("size", "path", "linkpath")
                     if hdr.type == :g
                         globals[key] = val
@@ -229,7 +270,7 @@ function read_header(
             end
         elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
             # GNU long name or link header
-            data = read_data(io, size=hdr.size, buf=buf)
+            data = read_data(io, size=hdr.size, buf=buf, tee=tee)
             data[end] == 0 ||
                 error("malformed GNU long header (trailing `\\0` expected): " *
                       repr(String(data)))
@@ -238,7 +279,7 @@ function read_header(
         else
             break # non-extension header block
         end
-        hdr = read_standard_header(io, buf=buf)
+        hdr = read_standard_header(io, buf=buf, tee=tee)
         hdr === nothing && error("premature end of tar file")
     end
     # determine final values for size, path & link
@@ -262,8 +303,9 @@ function read_extended_metadata(
     io::IO,
     size::Integer;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    tee::IO = devnull,
 )
-    data = read_data(io, size=size, buf=buf)
+    data = read_data(io, size=size, buf=buf, tee=tee)
     malformed() = error("malformed extended header metadata: $(repr(String(data)))")
     i = 0
     while i < size
@@ -304,10 +346,20 @@ end
 function read_standard_header(
     io::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    tee::IO = devnull,
 )
     header_view = view(buf, 1:512)
     view_read!(io, header_view)
-    all(iszero, header_view) && return nothing
+    write(tee, header_view)
+    if all(iszero, header_view)
+        if tee !== devnull
+            while !eof(io)
+                r = readbytes!(io, buf)
+                write(tee, view(buf, 1:r))
+            end
+        end
+        return nothing
+    end
     name    = read_header_str(header_view, 0, 100)
     mode    = read_header_int(header_view, 100, 8)
     size    = header_view[124+1] & 0x80 == 0 ?
@@ -335,7 +387,8 @@ end
 round_up(size) = 512 * ((size + 511) ÷ 512)
 
 function skip_data(tar::IO, size::Integer)
-    skip(tar, round_up(size))
+    size < 0 && throw(ArgumentError("[internal error] negative skip: $size"))
+    size > 0 && skip(tar, round_up(size))
 end
 
 index_range(offset::Int, length::Int) = offset .+ (1:length)
@@ -378,11 +431,13 @@ function read_data(
     file::IO;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    tee::IO = devnull,
 )::Nothing
     t = round_up(size)
     while size > 0
         n = min(t, length(buf))
         r = readbytes!(tar, buf, n)
+        write(tee, view(buf, 1:r))
         r < n && eof(io) && error("premature end of tar file")
         size -= write(file, view(buf, 1:min(r, size)))
         t -= r
@@ -396,9 +451,10 @@ function read_data(
     file::AbstractString;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    tee::IO = devnull,
 )::Nothing
     open(file, write=true) do file′
-        read_data(tar, file′, size=size, buf=buf)
+        read_data(tar, file′, size=size, buf=buf, tee=tee)
     end
 end
 
@@ -408,10 +464,12 @@ function read_data(
     tar::IO;
     size::Integer,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    tee::IO = devnull,
 )::AbstractVector{UInt8}
     n = round_up(size)
     length(buf) < n && resize!(buf, nextpow(2, n))
     r = readbytes!(tar, buf, n)
+    write(tee, view(buf, 1:r))
     r < n && error("premature end of tar file")
     return view(buf, 1:size)
 end

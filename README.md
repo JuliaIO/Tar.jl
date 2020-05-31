@@ -121,11 +121,12 @@ None of these are exported, however: the recommended usage is to do `import Tar`
 
 ### Tar.create
 
-    create([ predicate, ] dir, [ tarball ]) -> tarball
+    create([ predicate, ] dir, [ tarball ]; [ skeleton ]) -> tarball
 
 * `predicate :: String --> Bool`
 * `dir       :: AbstractString`
 * `tarball   :: Union{AbstractString, IO}`
+* `skeleton  :: Union{AbstractString, IO}`
 
 Create a tar archive ("tarball") of the directory `dir`. The resulting archive
 is written to the path `tarball` or if no path is specified, a temporary path is
@@ -138,13 +139,20 @@ tarball if `predicate(path)` is true. If `predicate(path)` returns false for a
 directory, then the directory is excluded entirely: nothing under that directory
 will be included in the archive.
 
+If the `skeleton` keyword is passed then the file or IO handle given is used as
+a "skeleton" to generate the tarball. You create a skeleton file by passing the
+`skeleton` keyword to the `extract` command. If `create` is called with that
+skeleton file and the extracted files haven't changed, an identical tarball is
+recreated. The `skeleton` and `predicate` arguments cannot be used together.
+
 ### Tar.extract
 
-    extract([ predicate, ] tarball, [ dir ]) -> dir
+    extract([ predicate, ] tarball, [ dir ]; [ skeleton ]) -> dir
 
 * `predicate :: Header --> Bool`
 * `tarball   :: Union{AbstractString, IO}`
 * `dir       :: AbstractString`
+* `skeleton  :: Union{AbstractString, IO}`
 
 Extract a tar archive ("tarball") located at the path `tarball` into the
 directory `dir`. If `tarball` is an IO object instead of a path, then the
@@ -158,6 +166,11 @@ is encountered while extracting `tarball` and the entry is only extracted if the
 `predicate(hdr)` is true. This can be used to selectively extract only parts of
 an archive, to skip entries that cause `extract` to throw an error, or to record
 what is extracted during the extraction process.
+
+If the `skeleton` keyword is passed then a "skeleton" of the extracted tarball
+is written to the file or IO handle given. This skeleton file can be used to
+recreate an identical tarball by passing the `skeleton` keyword to the `create`
+function. The `skeleton` and `predicate` arguments cannot be used together.
 
 ### Tar.list
 
@@ -180,6 +193,10 @@ By default `list` will error if it encounters any tarball contents which the
 these checks and list all the the contents of the tar file whether `extract`
 would extract them or not. Beware that malicious tarballs can do all sorts of
 crafty and unexpected things to try to trick you into doing something bad.
+
+If the `tarball` argument is a skeleton file (see `extract` and `create`) then
+`list` will detect that from the file header and appropriately list or iterate
+the headers of the skeleton file.
 
 ### Tar.rewrite
 

@@ -17,6 +17,25 @@ function create_tarball(
     end
 end
 
+function recreate_tarball(
+    tar::IO,
+    root::String,
+    skeleton::IO;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
+    check_skeleton_header(skeleton, buf=buf)
+    globals = Dict{String,String}()
+    while !eof(skeleton)
+        hdr = read_header(skeleton, globals, buf=buf, tee=tar)
+        hdr === nothing && break
+        check_header(hdr)
+        sys_path = joinpath(root, hdr.path)
+        if hdr.type == :file
+            write_data(tar, sys_path, size=hdr.size, buf=buf)
+        end
+    end
+end
+
 function rewrite_tarball(
     predicate::Function,
     old_tar::IO,
@@ -147,17 +166,16 @@ function write_extended_header(
     tar::IO,
     metadata::Vector{Pair{String,String}};
     type::Symbol = :x, # default: non-global extended header
+    name::AbstractString = "",
+    prefix::AbstractString = "",
+    link::AbstractString = "",
+    mode::Integer = 0o000,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     type in (:x, :g) ||
         throw(ArgumentError("invalid type flag for extended header: $(repr(type))"))
     d = IOBuffer()
     for (key, val) in metadata
-        isvalid(key) ||
-            throw(ArgumentError("extended header key not valid UTF-8: $(repr(key))"))
-        isvalid(val) ||
-            throw(ArgumentError("extended header value not valid UTF-8: $(repr(val))"))
-        # generate key-value entry
         entry = " $key=$val\n"
         n = l = ncodeunits(entry)
         while n < l + ndigits(n)
@@ -166,8 +184,9 @@ function write_extended_header(
         @assert n == l + ndigits(n)
         write(d, "$n$entry")
     end
-    hdr = Header("", type, 0o000, position(d), "")
-    w = write_standard_header(tar, hdr, buf=buf)
+    path = isempty(name) || isempty(prefix) ? "$prefix$name" : "$prefix/$name"
+    hdr = Header(path, type, mode, position(d), link)
+    w = write_standard_header(tar, hdr, name=name, prefix=prefix, buf=buf)
     w += write_data(tar, seekstart(d), size=hdr.size, buf=buf)
 end
 
