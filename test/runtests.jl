@@ -21,7 +21,7 @@ end
 @testset "test tarball" begin
     tarball, hash = make_test_tarball()
     @testset "Tar.tree_hash" begin
-        arg_readers(tarball, Union{AbstractString, IO}) do tar
+        arg_readers(tarball) do tar
             @arg_test tar @test Tar.tree_hash(tar, skip_empty=true) == hash
             @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar)
             @arg_test tar @test empty_tree_sha1 ==
@@ -51,7 +51,7 @@ end
             end
         end
         @testset "Tar.list from IO, process, pipeline" begin
-            arg_readers(tarball, Union{AbstractString, IO}) do tar
+            arg_readers(tarball) do tar
                 @arg_test tar begin
                     @test headers == Tar.list(tar)
                 end
@@ -67,7 +67,7 @@ end
         end
     end
     @testset "Tar.extract" begin
-        arg_readers(tarball, Union{AbstractString, IO}) do tar
+        arg_readers(tarball) do tar
             @arg_test tar begin
                 root = Tar.extract(tar)
                 check_tree_hash(hash, root)
@@ -220,7 +220,7 @@ end
         rm(tarball)
 
         # create(dir, tarball)
-        arg_writers(Union{AbstractString, IO}) do tarball, tar
+        arg_writers() do tarball, tar
             @arg_test tar begin
                 @test tar == Tar.create(dir, tar)
             end
@@ -242,7 +242,7 @@ end
         rm(tarball)
 
         # create(predicate, dir, tarball)
-        arg_writers(Union{AbstractString, IO}) do tarball, tar
+        arg_writers() do tarball, tar
             @arg_test tar begin
                 @test tar == Tar.create(predicate, dir, tar)
             end
@@ -261,7 +261,7 @@ end
     n = length(test_dir_paths)
 
     # list([predicate,] tarball)
-    arg_readers(tarball, Union{AbstractString, IO}) do tar
+    arg_readers(tarball) do tar
         @arg_test tar begin
             headers = Tar.list(tar)
             @test test_dir_paths == [hdr.path for hdr in headers]
@@ -276,7 +276,7 @@ end
     paths = push!(copy(test_dir_paths), "/bad")
 
     # list([predicate,] tarball; strict=true|false)
-    arg_readers(tarball, Union{AbstractString, IO}) do tar
+    arg_readers(tarball) do tar
         @arg_test tar @test_throws ErrorException Tar.list(tar)
         @arg_test tar @test_throws ErrorException Tar.list(tar, strict=true)
         @arg_test tar begin
@@ -298,7 +298,7 @@ end
     @test hash != Tar.tree_hash(tarball, skip_empty=false)
 
     @testset "without predicate" begin
-        arg_readers(tarball, Union{AbstractString, IO}) do tar
+        arg_readers(tarball) do tar
             # extract(tarball)
             @arg_test tar begin
                 dir = Tar.extract(tar)
@@ -346,7 +346,7 @@ end
         @test hash == Tar.tree_hash(predicate, tarball, skip_empty=true)
         @test hash != Tar.tree_hash(predicate, tarball, skip_empty=false)
 
-        arg_readers(tarball, Union{AbstractString, IO}) do tar
+        arg_readers(tarball) do tar
             # extract(predicate, tarball)
             @arg_test tar begin
                 dir = Tar.extract(predicate, tar)
@@ -405,7 +405,7 @@ end
 
     @testset "without predicate" begin
         for tarball in (reference, alternate)
-            arg_readers(tarball, Union{AbstractString, IO}) do old
+            arg_readers(tarball) do old
                 # rewrite(old)
                 @arg_test old begin
                     new_file = Tar.rewrite(old)
@@ -413,7 +413,7 @@ end
                     rm(new_file)
                 end
                 # rewrite(old, new)
-                arg_writers(Union{AbstractString, IO}) do new_file, new
+                arg_writers() do new_file, new
                     @arg_test old new begin
                         @test new == Tar.rewrite(old, new)
                     end
@@ -432,7 +432,7 @@ end
         rm(filtered)
 
         for tarball in (reference, alternate)
-            arg_readers(tarball, Union{AbstractString, IO}) do old
+            arg_readers(tarball) do old
                 # rewrite(predicate, old)
                 @arg_test old begin
                     new_file = Tar.rewrite(predicate, old)
@@ -440,7 +440,7 @@ end
                     rm(new_file)
                 end
                 # rewrite(predicate, old, new)
-                arg_writers(Union{AbstractString, IO}) do new_file, new
+                arg_writers() do new_file, new
                     @arg_test old new begin
                         @test new == Tar.rewrite(predicate, old, new)
                     end
@@ -489,7 +489,7 @@ end
         @test isfile(skeleton)
         # test skeleton listing
         hdrs = Tar.list(tarball)
-        arg_readers(skeleton, Union{AbstractString, IO}) do skel
+        arg_readers(skeleton) do skel
             @arg_test skel @test hdrs == Tar.list(skel)
         end
         if flag && !Sys.iswindows()
@@ -498,7 +498,7 @@ end
             @test paths == sort!(gtar(gtar -> readlines(`$gtar -tf $skeleton`)))
         end
         hdrs = Tar.list(tarball, raw=true)
-        arg_readers(skeleton, Union{AbstractString, IO}) do skel
+        arg_readers(skeleton) do skel
             @arg_test skel @test hdrs == Tar.list(skel, raw=true)
             # test reconstruction from skeleton
             @arg_test skel begin
@@ -508,7 +508,7 @@ end
             end
         end
         # check that extracting skeleton to IO works
-        arg_writers(Union{AbstractString, IO}) do skeleton′, skel
+        arg_writers() do skeleton′, skel
             @arg_test skel Tar.extract(tarball, skeleton=skel)
             @test read(skeleton) == read(skeleton′)
         end
