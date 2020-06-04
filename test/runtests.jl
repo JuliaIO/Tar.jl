@@ -568,7 +568,7 @@ end
         if flag && !Sys.iswindows()
             # GNU tar can list skeleton files of tarballs we generated
             paths = sort!([hdr.path for hdr in hdrs])
-            @test paths == sort!(gtar(gtar -> readlines(`$gtar -tf $tarball`)))
+            @test paths == sort!(gtar(gtar -> readlines(`$gtar -tf $skeleton`)))
         end
         hdrs = Tar.list(tarball, raw=true)
         @test hdrs == Tar.list(skeleton, raw=true)
