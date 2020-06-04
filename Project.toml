@@ -4,6 +4,7 @@ authors = ["Stefan Karpinski <stefan@karpinski.org>"]
 version = "1.4.0"
 
 [deps]
+ArgTools = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [compat]

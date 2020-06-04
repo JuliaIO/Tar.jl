@@ -1,5 +1,8 @@
 module Tar
 
+using ArgTools
+const true_predicate = _ -> true
+
 # 2 MiB to take advantage of THP if enabled
 const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
 
@@ -17,40 +20,6 @@ const skip_buffer = UInt8[]
 include("header.jl")
 include("create.jl")
 include("extract.jl")
-
-## some API utilities ##
-
-const true_predicate = _ -> true
-
-open_read(f::Function, file::AbstractString) = open(f, file)
-open_read(f::Function, file::IO) = f(file)
-
-function open_write(f::Function, file::AbstractString)
-    try open(f, file, write=true)
-    catch
-        rm(file, force=true)
-        rethrow()
-    end
-    return file
-end
-function open_write(f::Function, file::Nothing)
-    file, io = mktemp()
-    try f(io)
-    catch
-        close(io)
-        rm(file, force=true)
-        rethrow()
-    end
-    close(io)
-    return file
-end
-function open_write(f::Function, file::IO)
-    try f(file)
-    finally
-        flush(file)
-    end
-    return file
-end
 
 ## official API: create, list, extract, rewrite, tree_hash
 
@@ -87,15 +56,15 @@ function create(
 )
     check_create_dir(dir)
     if skeleton === nothing
-        open_write(tarball) do tar
+        arg_write(tarball) do tar
             create_tarball(predicate, tar, dir)
         end
     else
         predicate === true_predicate ||
             error("create: predicate and skeleton cannot be used together")
         check_create_skeleton(skeleton)
-        open_read(skeleton) do skeleton
-            open_write(tarball) do tar
+        arg_read(skeleton) do skeleton
+            arg_write(tarball) do tar
                 recreate_tarball(tar, dir, skeleton)
             end
         end
@@ -147,7 +116,7 @@ function list(
         let globals = Dict{String,String}()
             (tar; buf) -> read_header(tar, globals, buf=buf)
         end
-    open_read(tarball) do tar
+    arg_read(tarball) do tar
         iterate_headers(callback, tar, read_hdr, strict=strict)
     end
 end
@@ -201,9 +170,9 @@ function extract(
     skeleton = something(skeleton, devnull)
     check_extract_tarball(tarball)
     check_extract_dir(dir)
-    open_read(tarball) do tar
+    arg_read(tarball) do tar
         if dir !== nothing && ispath(dir)
-            open_write(skeleton) do skeleton
+            arg_write(skeleton) do skeleton
                 extract_tarball(predicate, tar, dir, skeleton=skeleton)
             end
         else
@@ -212,7 +181,7 @@ function extract(
             else
                 mkdir(dir)
             end
-            try open_write(skeleton) do skeleton
+            try arg_write(skeleton) do skeleton
                     extract_tarball(predicate, tar, dir, skeleton=skeleton)
                 end
             catch
@@ -262,8 +231,8 @@ function rewrite(
     new_tarball::Union{AbstractString, IO, Nothing} = nothing,
 )
     old_tarball = check_rewrite_old_tarball(old_tarball)
-    open_read(old_tarball) do old_tar
-        open_write(new_tarball) do new_tar
+    arg_read(old_tarball) do old_tar
+        arg_write(new_tarball) do new_tar
             rewrite_tarball(predicate, old_tar, new_tar)
         end
     end
@@ -338,7 +307,7 @@ function tree_hash(
             error("invalid tree hashing algorithm: $algorithm")
 
     check_tree_hash_tarball(tarball)
-    open_read(tarball) do tar
+    arg_read(tarball) do tar
         git_tree_hash(predicate, tar, HashType, skip_empty)
     end
 end
