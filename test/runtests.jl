@@ -21,25 +21,13 @@ end
 @testset "test tarball" begin
     tarball, hash = make_test_tarball()
     @testset "Tar.tree_hash" begin
-        @test Tar.tree_hash(tarball, skip_empty=true) == hash
-        open(tarball) do io
-            @test Tar.tree_hash(io, skip_empty=true) == hash
-        end
-        @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tarball)
-        @test empty_tree_sha1 ==
-            Tar.tree_hash(hdr->false, tarball, algorithm="git-sha1")
-        @test empty_tree_sha256 ==
-            Tar.tree_hash(hdr->false, tarball, algorithm="git-sha256")
-        open(tarball) do io
-            @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tarball)
-        end
-        open(tarball) do io
-            @test empty_tree_sha1 ==
-                Tar.tree_hash(hdr->false, tarball, algorithm="git-sha1")
-        end
-        open(tarball) do io
-            @test empty_tree_sha256 ==
-                Tar.tree_hash(hdr->false, tarball, algorithm="git-sha256")
+        arg_readers(tarball) do tar
+            @arg_test tar @test Tar.tree_hash(tar, skip_empty=true) == hash
+            @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar)
+            @arg_test tar @test empty_tree_sha1 ==
+                Tar.tree_hash(hdr->false, tar, algorithm="git-sha1")
+            @arg_test tar @test empty_tree_sha256 ==
+                Tar.tree_hash(hdr->false, tar, algorithm="git-sha256")
         end
     end
     @testset "Tar.list & check properties" begin
@@ -63,9 +51,11 @@ end
             end
         end
         @testset "Tar.list from IO, process, pipeline" begin
-            @test headers == open(Tar.list, tarball)
-            @test headers == open(Tar.list, `cat $tarball`)
-            @test headers == open(Tar.list, pipeline(`bzip2 -c -9 $tarball`, `bzcat`))
+            arg_readers(tarball) do tar
+                @arg_test tar begin
+                    @test headers == Tar.list(tar)
+                end
+            end
         end
     end
     # skip `tar` tests when it doesn't exist or when we're on windows
@@ -77,16 +67,12 @@ end
         end
     end
     @testset "Tar.extract" begin
-        root = Tar.extract(tarball)
-        check_tree_hash(hash, root)
-    end
-    @testset "Tar.extract from IO, process, pipeline" begin
-        root = open(Tar.extract, tarball)
-        check_tree_hash(hash, root)
-        root = open(Tar.extract, `cat $tarball`)
-        check_tree_hash(hash, root)
-        root = open(Tar.extract, pipeline(`bzip2 -c -9 $tarball`, `bzcat`))
-        check_tree_hash(hash, root)
+        arg_readers(tarball) do tar
+            @arg_test tar begin
+                root = Tar.extract(tar)
+                check_tree_hash(hash, root)
+            end
+        end
     end
     open(tarball, append=true) do io
         write(io, zeros(UInt8, 512))
@@ -227,21 +213,21 @@ end
         dir = make_test_dir()
         @test !any(splitext(name)[2] == ".skip" for name in readdir(dir))
 
-        # create(dir::String)
+        # create(dir)
         tarball = Tar.create(dir)
         bytes = read(tarball)
         @test isfile(tarball)
         rm(tarball)
-        # create(dir::String, tarball::String)
-        tarball = tempname()
-        Tar.create(dir, tarball)
-        @test read(tarball) == bytes
-        rm(tarball)
-        # create(dir::String, tarball::IO)
-        mktemp() do tarball, io
-            Tar.create(dir, io)
+
+        # create(dir, tarball)
+        arg_writers() do tarball, tar
+            @arg_test tar begin
+                @test tar == Tar.create(dir, tar)
+            end
             @test read(tarball) == bytes
         end
+
+        # cleanup
         rm(dir, recursive=true)
     end
 
@@ -249,20 +235,21 @@ end
         dir = make_test_dir(true)
         @test any(splitext(name)[2] == ".skip" for name in readdir(dir))
         predicate = path -> splitext(path)[2] != ".skip"
-        # create(predicate::Function, dir::String)
+
+        # create(predicate, dir)
         tarball = Tar.create(predicate, dir)
         @test read(tarball) == bytes
         rm(tarball)
-        # create(predicate::Function, dir::String, tarball::String)
-        tarball = tempname()
-        Tar.create(predicate, dir, tarball)
-        @test read(tarball) == bytes
-        rm(tarball)
-        # create(predicate::Function, dir::String, tarball::IO)
-        mktemp() do tarball, io
-            Tar.create(predicate, dir, io)
+
+        # create(predicate, dir, tarball)
+        arg_writers() do tarball, tar
+            @arg_test tar begin
+                @test tar == Tar.create(predicate, dir, tar)
+            end
             @test read(tarball) == bytes
         end
+
+        # cleanup
         rm(dir, recursive=true)
     end
 end
@@ -273,42 +260,32 @@ end
     rm(dir, recursive=true)
     n = length(test_dir_paths)
 
-    # list(tarball::String)
-    headers = Tar.list(tarball)
-    @test test_dir_paths == [hdr.path for hdr in headers]
-    @test n == tar_count(tarball)
-    # list(tarball::IO)
-    headers = open(Tar.list, tarball)
-    @test test_dir_paths == [hdr.path for hdr in headers]
-    @test n == open(tar_count, tarball)
+    # list([predicate,] tarball)
+    arg_readers(tarball) do tar
+        @arg_test tar begin
+            headers = Tar.list(tar)
+            @test test_dir_paths == [hdr.path for hdr in headers]
+        end
+        @arg_test tar @test n == tar_count(tar)
+    end
+
     # add a sketchy entry to tarball
     open(tarball, append=true) do io
         Tar.write_header(io, Tar.Header("/bad", :file, 0o644, 0, ""))
     end
     paths = push!(copy(test_dir_paths), "/bad")
-    # list(tarball::String; strict=true|false)
-    @test_throws ErrorException Tar.list(tarball)
-    @test_throws ErrorException Tar.list(tarball, strict=true)
-    @test_throws ErrorException tar_count(tarball)
-    @test_throws ErrorException tar_count(tarball, strict=true)
-    headers = Tar.list(tarball, strict=false)
-    @test paths == [hdr.path for hdr in headers]
-    @test n + 1 == tar_count(tarball, strict=false)
-    # list(tarball::IO; strict=true|false)
-    @test_throws ErrorException open(Tar.list, tarball)
-    @test_throws ErrorException open(tarball) do io
-        Tar.list(io, strict=true)
-    end
-    @test_throws ErrorException open(tar_count, tarball)
-    @test_throws ErrorException open(tarball) do io
-        tar_count(io, strict=true)
-    end
-    headers = open(tarball) do io
-        Tar.list(io, strict=false)
-    end
-    @test paths == [hdr.path for hdr in headers]
-    @test n + 1 == open(tarball) do io
-        tar_count(io, strict=false)
+
+    # list([predicate,] tarball; strict=true|false)
+    arg_readers(tarball) do tar
+        @arg_test tar @test_throws ErrorException Tar.list(tar)
+        @arg_test tar @test_throws ErrorException Tar.list(tar, strict=true)
+        @arg_test tar begin
+            headers = Tar.list(tar, strict=false)
+            @test paths == [hdr.path for hdr in headers]
+        end
+        @arg_test tar @test_throws ErrorException tar_count(tar)
+        @arg_test tar @test_throws ErrorException tar_count(tar, strict=true)
+        @arg_test tar @test n + 1 == tar_count(tar, strict=false)
     end
 end
 
@@ -321,57 +298,39 @@ end
     @test hash != Tar.tree_hash(tarball, skip_empty=false)
 
     @testset "without predicate" begin
-        # extract(tarball::String)
-        dir = Tar.extract(tarball)
-        check_tree_hash(hash, dir)
-        # extract(tarball::String, dir::String) — non-existent
-        dir = tempname()
-        Tar.extract(tarball, dir)
-        check_tree_hash(hash, dir)
-        # extract(tarball::String, dir::String) — existent, empty
-        dir = mktempdir()
-        Tar.extract(tarball, dir)
-        check_tree_hash(hash, dir)
-        # extract(tarball::String, dir::String) — non-directory (error)
-        dir = tempname()
-        touch(dir)
-        @test_throws ErrorException Tar.extract(tarball, dir)
-        rm(dir)
-        # extract(tarball::String, dir::String) — non-empty directory (error)
-        dir = mktempdir()
-        touch(joinpath(dir, "file"))
-        @test_throws ErrorException Tar.extract(tarball, dir)
-        rm(dir, recursive=true)
-
-        # extract(tarball::IO)
-        dir = open(Tar.extract, tarball)
-        check_tree_hash(hash, dir)
-        # extract(tarball::IO, dir::String) — non-existent
-        dir = tempname()
-        open(tarball) do io
-            Tar.extract(io, dir)
+        arg_readers(tarball) do tar
+            # extract(tarball)
+            @arg_test tar begin
+                dir = Tar.extract(tar)
+                check_tree_hash(hash, dir)
+            end
+            # extract(tarball, dir) — non-existent
+            @arg_test tar begin
+                dir = tempname()
+                Tar.extract(tar, dir)
+                check_tree_hash(hash, dir)
+            end
+            # extract(tarball, dir) — existent, empty
+            @arg_test tar begin
+                dir = mktempdir()
+                Tar.extract(tar, dir)
+                check_tree_hash(hash, dir)
+            end
+            # extract(tarball, dir) — non-directory (error)
+            @arg_test tar begin
+                file = tempname()
+                touch(file)
+                @test_throws ErrorException Tar.extract(tar, file)
+                rm(file)
+            end
+            # extract(tarball, dir) — non-empty directory (error)
+            @arg_test tar begin
+                dir = mktempdir()
+                touch(joinpath(dir, "file"))
+                @test_throws ErrorException Tar.extract(tar, dir)
+                rm(dir, recursive=true)
+            end
         end
-        check_tree_hash(hash, dir)
-        # extract(tarball::IO, dir::String) — existent, empty
-        dir = mktempdir()
-        open(tarball) do io
-            Tar.extract(io, dir)
-        end
-        check_tree_hash(hash, dir)
-        # extract(tarball::IO, dir::String) — non-directory (error)
-        dir = tempname()
-        touch(dir)
-        @test_throws ErrorException open(tarball) do io
-            Tar.extract(io, dir)
-        end
-        rm(dir)
-        # extract(tarball::IO, dir::String) — non-empty directory (error)
-        dir = mktempdir()
-        touch(joinpath(dir, "file"))
-        @test_throws ErrorException open(tarball) do io
-            Tar.extract(io, dir)
-        end
-        rm(dir, recursive=true)
     end
 
     @testset "with predicate" begin
@@ -387,24 +346,39 @@ end
         @test hash == Tar.tree_hash(predicate, tarball, skip_empty=true)
         @test hash != Tar.tree_hash(predicate, tarball, skip_empty=false)
 
-        # extract(predicate::Function, tarball::String)
-        dir = Tar.extract(predicate, tarball)
-        check_tree_hash(hash, dir)
-        # extract(predicate::Function, tarball::String, dir::String)
-        dir = tempname()
-        Tar.extract(predicate, tarball, dir)
-        check_tree_hash(hash, dir)
-        # extract(predicate::Function, tarball::IO)
-        dir = open(tarball) do io
-            Tar.extract(predicate, io)
+        arg_readers(tarball) do tar
+            # extract(predicate, tarball)
+            @arg_test tar begin
+                dir = Tar.extract(predicate, tar)
+                check_tree_hash(hash, dir)
+            end
+            # extract(predicate, tarball, dir) — non-existent
+            @arg_test tar begin
+                dir = tempname()
+                Tar.extract(predicate, tar, dir)
+                check_tree_hash(hash, dir)
+            end
+            # extract(predicate, tarball, dir) — existent, empty
+            @arg_test tar begin
+                dir = mktempdir()
+                Tar.extract(predicate, tar, dir)
+                check_tree_hash(hash, dir)
+            end
+            # extract(predicate, tarball, dir) — non-directory (error)
+            @arg_test tar begin
+                file = tempname()
+                touch(file)
+                @test_throws ErrorException Tar.extract(predicate, tar, file)
+                rm(file)
+            end
+            # extract(predicate, tarball, dir) — non-empty directory (error)
+            @arg_test tar begin
+                dir = mktempdir()
+                touch(joinpath(dir, "file"))
+                @test_throws ErrorException Tar.extract(predicate, tar, dir)
+                rm(dir, recursive=true)
+            end
         end
-        check_tree_hash(hash, dir)
-        # extract(tarball::IO, dir::String) — non-existent
-        dir = tempname()
-        open(tarball) do io
-            Tar.extract(predicate, io, dir)
-        end
-        check_tree_hash(hash, dir)
     end
 end
 
@@ -430,97 +404,50 @@ end
     end
 
     @testset "without predicate" begin
-        # rewrite(old::String)
-        tarball = Tar.rewrite(alternate)
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(old::String, new::String)
-        tarball = tempname()
-        Tar.rewrite(alternate, tarball)
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(old::IO)
-        tarball = open(Tar.rewrite, alternate)
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(old::Process)
-        tarball = open(Tar.rewrite, `cat $alternate`)
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(old::IO, new::String)
-        tarball = tempname()
-        open(alternate) do io
-            Tar.rewrite(io, tarball)
-        end
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(old::String, new::IO)
-        tarball = tempname()
-        open(tarball, write=true) do io
-            Tar.rewrite(alternate, io)
-            @test ref == read(tarball)
-        end
-        rm(tarball)
-        # rewrite(old::IO, new::IO)
-        tarball = tempname()
-        open(alternate) do old
-            open(tarball, write=true) do new
-                Tar.rewrite(old, new)
+        for tarball in (reference, alternate)
+            arg_readers(tarball) do old
+                # rewrite(old)
+                @arg_test old begin
+                    new_file = Tar.rewrite(old)
+                    @test ref == read(new_file)
+                    rm(new_file)
+                end
+                # rewrite(old, new)
+                arg_writers() do new_file, new
+                    @arg_test old new begin
+                        @test new == Tar.rewrite(old, new)
+                    end
+                    @test ref == read(new_file)
+                end
             end
-            @test ref == read(tarball)
         end
-        rm(tarball)
     end
 
     @testset "with predicate" begin
+        # made up order-independent tarball predicate
         predicate = hdr ->
             hdr.type == :symlink ? isodd(length(hdr.link)) : isodd(hdr.size)
         filtered = Tar.create(Tar.extract(predicate, reference))
         ref = read(filtered)
         rm(filtered)
 
-        # rewrite(predicate::Function, old::String) — reference
-        tarball = Tar.rewrite(predicate, reference)
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(predicate::Function, old::String) — alternate
-        tarball = Tar.rewrite(predicate, alternate)
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(predicate::Function, old::String, new::String)
-        tarball = tempname()
-        Tar.rewrite(predicate, alternate, tarball)
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(predicate::Function, old::IO)
-        tarball = open(alternate) do io
-            Tar.rewrite(predicate, io)
-        end
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(predicate::Function, old::IO, new::String)
-        tarball = tempname()
-        open(alternate) do io
-            Tar.rewrite(predicate, io, tarball)
-        end
-        @test ref == read(tarball)
-        rm(tarball)
-        # rewrite(predicate::Functoin, old::String, new::IO)
-        tarball = tempname()
-        open(tarball, write=true) do io
-            Tar.rewrite(predicate, alternate, io)
-            @test ref == read(tarball)
-        end
-        rm(tarball)
-        # rewrite(predicate::Function, old::IO, new::IO)
-        tarball = tempname()
-        open(alternate) do old
-            open(tarball, write=true) do new
-                Tar.rewrite(predicate, old, new)
+        for tarball in (reference, alternate)
+            arg_readers(tarball) do old
+                # rewrite(predicate, old)
+                @arg_test old begin
+                    new_file = Tar.rewrite(predicate, old)
+                    @test ref == read(new_file)
+                    rm(new_file)
+                end
+                # rewrite(predicate, old, new)
+                arg_writers() do new_file, new
+                    @arg_test old new begin
+                        @test new == Tar.rewrite(predicate, old, new)
+                    end
+                    @test ref == read(new_file)
+                end
             end
-            @test ref == read(tarball)
         end
-        rm(tarball)
     end
 
     # cleanup
@@ -556,36 +483,33 @@ end
 
     for (tarball, flag) in tarballs
         reference = read(tarball)
-        # check that tarballs are recreated exactly
+        # first, generate a skeleton
         skeleton = tempname()
-        @test !ispath(skeleton)
         dir = Tar.extract(tarball, skeleton=skeleton)
         @test isfile(skeleton)
         # test skeleton listing
         hdrs = Tar.list(tarball)
-        @test hdrs == Tar.list(skeleton)
-        @test hdrs == open(Tar.list, skeleton)
+        arg_readers(skeleton) do skel
+            @arg_test skel @test hdrs == Tar.list(skel)
+        end
         if flag && !Sys.iswindows()
             # GNU tar can list skeleton files of tarballs we generated
             paths = sort!([hdr.path for hdr in hdrs])
             @test paths == sort!(gtar(gtar -> readlines(`$gtar -tf $skeleton`)))
         end
         hdrs = Tar.list(tarball, raw=true)
-        @test hdrs == Tar.list(skeleton, raw=true)
-        @test hdrs == open(io -> Tar.list(io, raw=true), skeleton)
-        # test reconstruction from skeleton
-        tarball′ = Tar.create(dir, skeleton=skeleton)
-        @test reference == read(tarball′)
-        rm(tarball′)
-        # check that reading skeleton from IO works
-        open(skeleton) do io
-            tarball′ = Tar.create(dir, skeleton=io)
-            @test reference == read(tarball′)
-            rm(tarball′)
+        arg_readers(skeleton) do skel
+            @arg_test skel @test hdrs == Tar.list(skel, raw=true)
+            # test reconstruction from skeleton
+            @arg_test skel begin
+                tarball′ = Tar.create(dir, skeleton=skel)
+                @test reference == read(tarball′)
+                rm(tarball′)
+            end
         end
         # check that extracting skeleton to IO works
-        mktemp() do skeleton′, io
-            Tar.extract(tarball, skeleton=io)
+        arg_writers() do skeleton′, skel
+            @arg_test skel Tar.extract(tarball, skeleton=skel)
             @test read(skeleton) == read(skeleton′)
         end
         rm(skeleton)

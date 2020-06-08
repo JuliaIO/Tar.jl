@@ -1,5 +1,8 @@
 module Tar
 
+using ArgTools
+const true_predicate = _ -> true
+
 # 2 MiB to take advantage of THP if enabled
 const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
 
@@ -18,40 +21,6 @@ include("header.jl")
 include("create.jl")
 include("extract.jl")
 
-## some API utilities ##
-
-const true_predicate = _ -> true
-
-open_read(f::Function, file::AbstractString) = open(f, file)
-open_read(f::Function, file::IO) = f(file)
-
-function open_write(f::Function, file::AbstractString)
-    try open(f, file, write=true)
-    catch
-        rm(file, force=true)
-        rethrow()
-    end
-    return file
-end
-function open_write(f::Function, file::Nothing)
-    file, io = mktemp()
-    try f(io)
-    catch
-        close(io)
-        rm(file, force=true)
-        rethrow()
-    end
-    close(io)
-    return file
-end
-function open_write(f::Function, file::IO)
-    try f(file)
-    finally
-        flush(file)
-    end
-    return file
-end
-
 ## official API: create, list, extract, rewrite, tree_hash
 
 """
@@ -59,8 +28,8 @@ end
 
         predicate :: String --> Bool
         dir       :: AbstractString
-        tarball   :: Union{AbstractString, IO}
-        skeleton  :: Union{AbstractString, IO}
+        tarball   :: Union{AbstractString, AbstractCmd, IO}
+        skeleton  :: Union{AbstractString, AbstractCmd, IO}
 
 Create a tar archive ("tarball") of the directory `dir`. The resulting archive
 is written to the path `tarball` or if no path is specified, a temporary path is
@@ -82,20 +51,20 @@ recreated. The `skeleton` and `predicate` arguments cannot be used together.
 function create(
     predicate::Function,
     dir::AbstractString,
-    tarball::Union{AbstractString, IO, Nothing} = nothing;
-    skeleton::Union{AbstractString, IO, Nothing} = nothing,
+    tarball::Union{ArgWrite, Nothing} = nothing;
+    skeleton::Union{ArgRead, Nothing} = nothing,
 )
     check_create_dir(dir)
     if skeleton === nothing
-        open_write(tarball) do tar
+        arg_write(tarball) do tar
             create_tarball(predicate, tar, dir)
         end
     else
         predicate === true_predicate ||
             error("create: predicate and skeleton cannot be used together")
         check_create_skeleton(skeleton)
-        open_read(skeleton) do skeleton
-            open_write(tarball) do tar
+        arg_read(skeleton) do skeleton
+            arg_write(tarball) do tar
                 recreate_tarball(tar, dir, skeleton)
             end
         end
@@ -104,8 +73,8 @@ end
 
 function create(
     dir::AbstractString,
-    tarball::Union{AbstractString, IO, Nothing} = nothing;
-    skeleton::Union{AbstractString, IO, Nothing} = nothing,
+    tarball::Union{ArgWrite, Nothing} = nothing;
+    skeleton::Union{ArgRead, Nothing} = nothing,
 )
     create(true_predicate, dir, tarball, skeleton=skeleton)
 end
@@ -115,7 +84,7 @@ end
     list(callback, tarball; [ strict = true ])
 
         callback  :: Header --> Bool
-        tarball   :: Union{AbstractString, IO}
+        tarball   :: Union{AbstractString, AbstractCmd, IO}
         strict    :: Bool
 
 List the contents of a tar archive ("tarball") located at the path `tarball`. If
@@ -137,7 +106,7 @@ the headers of the skeleton file.
 """
 function list(
     callback::Function,
-    tarball::Union{AbstractString, IO};
+    tarball::ArgRead;
     raw::Bool = false,
     strict::Bool = !raw,
 )
@@ -147,13 +116,13 @@ function list(
         let globals = Dict{String,String}()
             (tar; buf) -> read_header(tar, globals, buf=buf)
         end
-    open_read(tarball) do tar
+    arg_read(tarball) do tar
         iterate_headers(callback, tar, read_hdr, strict=strict)
     end
 end
 
 function list(
-    tarball::Union{AbstractString, IO};
+    tarball::ArgRead;
     raw::Bool = false,
     strict::Bool = !raw,
 )
@@ -168,9 +137,9 @@ end
     extract([ predicate, ] tarball, [ dir ]; [ skeleton ]) -> dir
 
         predicate :: Header --> Bool
-        tarball   :: Union{AbstractString, IO}
+        tarball   :: Union{AbstractString, AbstractCmd, IO}
         dir       :: AbstractString
-        skeleton  :: Union{AbstractString, IO}
+        skeleton  :: Union{AbstractString, AbstractCmd, IO}
 
 Extract a tar archive ("tarball") located at the path `tarball` into the
 directory `dir`. If `tarball` is an IO object instead of a path, then the
@@ -192,18 +161,18 @@ function. The `skeleton` and `predicate` arguments cannot be used together.
 """
 function extract(
     predicate::Function,
-    tarball::Union{AbstractString, IO},
+    tarball::ArgRead,
     dir::Union{AbstractString, Nothing} = nothing;
-    skeleton::Union{AbstractString, IO, Nothing} = nothing,
+    skeleton::Union{ArgWrite, Nothing} = nothing,
 )
     predicate === true_predicate || skeleton === nothing ||
         error("extract: predicate and skeleton cannot be used together")
     skeleton = something(skeleton, devnull)
     check_extract_tarball(tarball)
     check_extract_dir(dir)
-    open_read(tarball) do tar
+    arg_read(tarball) do tar
         if dir !== nothing && ispath(dir)
-            open_write(skeleton) do skeleton
+            arg_write(skeleton) do skeleton
                 extract_tarball(predicate, tar, dir, skeleton=skeleton)
             end
         else
@@ -212,7 +181,7 @@ function extract(
             else
                 mkdir(dir)
             end
-            try open_write(skeleton) do skeleton
+            try arg_write(skeleton) do skeleton
                     extract_tarball(predicate, tar, dir, skeleton=skeleton)
                 end
             catch
@@ -226,9 +195,9 @@ function extract(
 end
 
 function extract(
-    tarball::Union{AbstractString, IO},
+    tarball::ArgRead,
     dir::Union{AbstractString, Nothing} = nothing;
-    skeleton::Union{AbstractString, IO, Nothing} = nothing,
+    skeleton::Union{ArgWrite, Nothing} = nothing,
 )
     extract(true_predicate, tarball, dir, skeleton=skeleton)
 end
@@ -237,8 +206,8 @@ end
     rewrite([ predicate, ], old_tarball, [ new_tarball ]) -> new_tarball
 
         predicate   :: Header --> Bool
-        old_tarball :: Union{AbstractString, IO}
-        new_tarball :: Union{AbstractString, IO}
+        old_tarball :: Union{AbstractString, AbtractCmd, IO}
+        new_tarball :: Union{AbstractString, AbtractCmd, IO}
 
 Rewrite `old_tarball` to the standard format that `create` generates, while also
 checking that it doesn't contain anything that would cause `extract` to raise an
@@ -258,20 +227,20 @@ record what content is encountered during the rewrite process.
 """
 function rewrite(
     predicate::Function,
-    old_tarball::Union{AbstractString, IO},
-    new_tarball::Union{AbstractString, IO, Nothing} = nothing,
+    old_tarball::ArgRead,
+    new_tarball::Union{ArgWrite, Nothing} = nothing,
 )
     old_tarball = check_rewrite_old_tarball(old_tarball)
-    open_read(old_tarball) do old_tar
-        open_write(new_tarball) do new_tar
+    arg_read(old_tarball) do old_tar
+        arg_write(new_tarball) do new_tar
             rewrite_tarball(predicate, old_tar, new_tar)
         end
     end
 end
 
 function rewrite(
-    old_tarball::Union{AbstractString, IO},
-    new_tarball::Union{AbstractString, IO, Nothing} = nothing,
+    old_tarball::ArgRead,
+    new_tarball::Union{ArgWrite, Nothing} = nothing,
 )
     rewrite(true_predicate, old_tarball, new_tarball)
 end
@@ -282,7 +251,7 @@ end
               [ skip_empty = false ]) -> hash::String
 
         predicate  :: Header --> Bool
-        tarball    :: Union{AbstractString, IO}
+        tarball    :: Union{AbstractString, AbstractCmd, IO}
         algorithm  :: AbstractString
         skip_empty :: Bool
 
@@ -328,7 +297,7 @@ this one) that does not ignore empty directories.
 """
 function tree_hash(
     predicate::Function,
-    tarball::Union{AbstractString, IO};
+    tarball::ArgRead;
     algorithm::AbstractString = "git-sha1",
     skip_empty::Bool = false,
 )
@@ -338,13 +307,13 @@ function tree_hash(
             error("invalid tree hashing algorithm: $algorithm")
 
     check_tree_hash_tarball(tarball)
-    open_read(tarball) do tar
+    arg_read(tarball) do tar
         git_tree_hash(predicate, tar, HashType, skip_empty)
     end
 end
 
 function tree_hash(
-    tarball::Union{AbstractString, IO};
+    tarball::ArgRead;
     algorithm::AbstractString = "git-sha1",
     skip_empty::Bool = false,
 )
@@ -360,63 +329,64 @@ end
 
 check_create_dir(dir::AbstractString) =
     isdir(dir) || error("""
-    not a directory: $dir
+    `dir` not a directory: $dir
     USAGE: create([predicate,] dir, [tarball])
     """)
 
 check_create_skeleton(skeleton::AbstractString) =
     isfile(skeleton) || error("""
-    not a file: $skeleton
-    USAGE: create(skeleton, dir, [tarball]; [skeleton = <file>])
+    `skeleton` not a file: $skeleton
+    USAGE: create([predicate,] dir, [tarball]; [skeleton = <file>])
     """)
 
-check_create_skeleton(skeleton::IO) = nothing
+check_create_skeleton(skeleton::ArgRead) = nothing
 
 check_list_tarball(tarball::AbstractString) =
     isfile(tarball) || error("""
-    not a file: $tarball
-    USAGE: list(tarball)
+    `tarball` not a file: $tarball
+    USAGE: list([predicate,] tarball)
     """)
 
 check_extract_tarball(tarball::AbstractString) =
     isfile(tarball) || error("""
-    not a file: $tarball
+    `tarball` not a file: $tarball
     USAGE: extract([predicate,] tarball, [dir])
     """)
 
-check_extract_tarball(tarball::IO) = nothing
+check_extract_tarball(tarball::ArgWrite) = nothing
 
 function check_extract_dir(dir::AbstractString)
     st = stat(dir)
     ispath(st) && !isdir(st) &&
         error("""
-        not a directory: $dir
+        `dir` not a directory: $dir
         USAGE: extract([predicate,] tarball, [dir])
         """)
     isdir(st) && !isempty(readdir(dir)) &&
         error("""
-        directory not empty: $dir
+        `dir` not empty: $dir
         USAGE: extract([predicate,] tarball, [dir])
         """)
 end
 
 check_extract_dir(dir::Nothing) = nothing
 
-check_rewrite_old_tarball(tarball::AbstractString) =
-    isfile(tarball) ? tarball : error("""
-    not a file: $tarball
+check_rewrite_old_tarball(old_tarball::AbstractString) =
+    isfile(old_tarball) ? old_tarball : error("""
+    `old_tarball` not a file: $old_tarball
     USAGE: rewrite([predicate,] old_tarball, [new_tarball])
     """)
 
-check_rewrite_old_tarball(tarball::IO) =
-    applicable(seek, tarball, 0) ? tarball : IOBuffer(read(tarball))
+check_rewrite_old_tarball(old_tarball::ArgRead) =
+    applicable(seek, old_tarball, 0) ?
+        old_tarball : IOBuffer(read(old_tarball))
 
 check_tree_hash_tarball(tarball::AbstractString) =
     isfile(tarball) || error("""
-    not a file: $tarball
+    `tarball` not a file: $tarball
     USAGE: tree_hash([predicate,] tarball)
     """)
 
-check_tree_hash_tarball(tarball::IO) = nothing
+check_tree_hash_tarball(tarball::ArgRead) = nothing
 
 end # module

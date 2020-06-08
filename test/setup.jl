@@ -1,4 +1,5 @@
 using Test
+using ArgTools
 
 if !Sys.iswindows()
     using Tar_jll
