@@ -84,6 +84,18 @@ end
     rm(tarball)
 end
 
+@testset "truncated tarball" begin
+    tarball, hash = make_test_tarball()
+    open(tarball, "a") do io
+        truncate(io, div(filesize(tarball),2))
+    end
+
+    @testset "tree_hash" begin
+        # Ensure that this throws 
+        @test_throws EOFError Tar.tree_hash(tarball)
+    end
+end
+
 if !Sys.iswindows()
     @testset "POSIX extended headers" begin
         # make a test POSIX tarball with GNU `tar` from Tar_jll instead of Tar.create
