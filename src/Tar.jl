@@ -171,27 +171,12 @@ function extract(
     check_extract_tarball(tarball)
     check_extract_dir(dir)
     arg_read(tarball) do tar
-        if dir !== nothing && ispath(dir)
+        arg_mkdir(dir) do dir
             arg_write(skeleton) do skeleton
                 extract_tarball(predicate, tar, dir, skeleton=skeleton)
             end
-        else
-            if dir === nothing
-                dir = mktempdir()
-            else
-                mkdir(dir)
-            end
-            try arg_write(skeleton) do skeleton
-                    extract_tarball(predicate, tar, dir, skeleton=skeleton)
-                end
-            catch
-                chmod(dir, 0o700, recursive=true)
-                rm(dir, force=true, recursive=true)
-                rethrow()
-            end
         end
     end
-    return dir::AbstractString
 end
 
 function extract(
