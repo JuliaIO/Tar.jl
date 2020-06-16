@@ -5,6 +5,7 @@ version = "1.5.0"
 
 [deps]
 ArgTools = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [compat]
@@ -13,8 +14,9 @@ julia = "1.3"
 
 [extras]
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Tar_jll = "9b64493d-8859-5bf3-93d7-7c32dd38186f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "Pkg", "Tar_jll"]
+test = ["Pkg", "Random", "Tar_jll", "Test"]
