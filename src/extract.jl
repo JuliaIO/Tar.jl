@@ -170,7 +170,7 @@ function git_file_hash(
     while size > 0
         n = min(t, length(buf))
         r = readbytes!(tar, buf, n)
-        r < n && eof(io) && error("premature end of tar file")
+        r < n && eof(tar) && throw(EOFError())
         v = view(buf, 1:min(r, size))
         SHA.update!(ctx, v)
         size -= length(v)
