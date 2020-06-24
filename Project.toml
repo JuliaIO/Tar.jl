@@ -1,7 +1,7 @@
 name = "Tar"
 uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 authors = ["Stefan Karpinski <stefan@karpinski.org>"]
-version = "1.5.0"
+version = "1.6.0"
 
 [deps]
 ArgTools = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
