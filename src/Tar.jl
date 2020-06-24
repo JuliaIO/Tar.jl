@@ -1,6 +1,8 @@
 module Tar
 
 using ArgTools
+using Logging
+
 const true_predicate = _ -> true
 
 # 2 MiB to take advantage of THP if enabled
@@ -16,6 +18,23 @@ function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
     return io
 end
 const skip_buffer = UInt8[]
+
+function can_symlink(dir::AbstractString)
+    # guaranteed to be an empty directory
+    link_path = joinpath(dir, "link")
+    log_level = Logging.min_enabled_level(Logging.current_logger())
+    return try
+        Logging.disable_logging(Logging.Warn)
+        symlink("target", link_path)
+        true
+    catch err
+        err isa Base.IOError || rethrow()
+        false
+    finally
+        Logging.disable_logging(log_level-1)
+        rm(link_path, force=true)
+    end
+end
 
 include("header.jl")
 include("create.jl")
@@ -134,12 +153,14 @@ function list(
 end
 
 """
-    extract([ predicate, ] tarball, [ dir ]; [ skeleton ]) -> dir
+    extract([ predicate, ] tarball, [ dir ];
+            [ skeleton, ] [ copy_symlinks ]) -> dir
 
-        predicate :: Header --> Bool
-        tarball   :: Union{AbstractString, AbstractCmd, IO}
-        dir       :: AbstractString
-        skeleton  :: Union{AbstractString, AbstractCmd, IO}
+        predicate     :: Header --> Bool
+        tarball       :: Union{AbstractString, AbstractCmd, IO}
+        dir           :: AbstractString
+        skeleton      :: Union{AbstractString, AbstractCmd, IO}
+        copy_symlinks :: Bool
 
 Extract a tar archive ("tarball") located at the path `tarball` into the
 directory `dir`. If `tarball` is an IO object instead of a path, then the
@@ -158,12 +179,21 @@ If the `skeleton` keyword is passed then a "skeleton" of the extracted tarball
 is written to the file or IO handle given. This skeleton file can be used to
 recreate an identical tarball by passing the `skeleton` keyword to the `create`
 function. The `skeleton` and `predicate` arguments cannot be used together.
+
+If `copy_symlinks` is `true` then instead of extracting symbolic links as such,
+they will be extracted as copies of what they link to if they are internal to
+the tarball and if it is possible to do so. Non-internal symlinks, such as a
+link to `/etc/passwd` will not be copied. Symlinks which are in any way cyclic
+will also not be copied and will instead be skipped. By default, `extract` will
+detect whether symlinks can be created in `dir` or not and will automatically
+copy symlinks if they cannot be created.
 """
 function extract(
     predicate::Function,
     tarball::ArgRead,
     dir::Union{AbstractString, Nothing} = nothing;
     skeleton::Union{ArgWrite, Nothing} = nothing,
+    copy_symlinks::Union{Bool, Nothing} = nothing,
 )
     predicate === true_predicate || skeleton === nothing ||
         error("extract: predicate and skeleton cannot be used together")
@@ -172,8 +202,15 @@ function extract(
     check_extract_dir(dir)
     arg_read(tarball) do tar
         arg_mkdir(dir) do dir
+            if copy_symlinks === nothing
+                copy_symlinks = !can_symlink(dir)
+            end
             arg_write(skeleton) do skeleton
-                extract_tarball(predicate, tar, dir, skeleton=skeleton)
+                extract_tarball(
+                    predicate, tar, dir,
+                    skeleton = skeleton,
+                    copy_symlinks = copy_symlinks,
+                )
             end
         end
     end
@@ -183,8 +220,13 @@ function extract(
     tarball::ArgRead,
     dir::Union{AbstractString, Nothing} = nothing;
     skeleton::Union{ArgWrite, Nothing} = nothing,
+    copy_symlinks::Union{Bool, Nothing} = nothing,
 )
-    extract(true_predicate, tarball, dir, skeleton=skeleton)
+    extract(
+        true_predicate, tarball, dir,
+        skeleton = skeleton,
+        copy_symlinks = copy_symlinks,
+    )
 end
 
 """

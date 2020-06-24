@@ -1,4 +1,5 @@
 using Test
+using Random
 using ArgTools
 
 if !Sys.iswindows()
@@ -131,4 +132,18 @@ function tar_count(tarball; kwargs...)
         n += 1
     end
     return n
+end
+
+function tar_write_file(io::IO, path::String, data::String, mode::Integer=0o644)
+    n = ncodeunits(data)
+    Tar.write_header(io, Tar.Header(path, :file, mode, n, ""))
+    Tar.write_data(io, IOBuffer(data), size=n)
+end
+
+function tar_write_link(io::IO, path::String, link::String, mode::Integer=0o755)
+    Tar.write_header(io, Tar.Header(path, :symlink, mode, 0, link))
+end
+
+function tar_write_dir(io::IO, path::String, mode::Integer=0o755)
+    Tar.write_header(io, Tar.Header(path, :directory, mode, 0, ""))
 end

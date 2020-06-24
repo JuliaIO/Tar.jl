@@ -43,8 +43,9 @@ function extract_tarball(
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     skeleton::IO = devnull,
+    copy_symlinks::Bool = false,
 )
-    read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
+    paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         # get the file system version of the path
         sys_path = reduce(joinpath, init=root, parts)
         # delete anything that's there already
@@ -60,7 +61,7 @@ function extract_tarball(
         if hdr.type == :directory
             mkdir(sys_path)
         elseif hdr.type == :symlink
-            symlink(hdr.link, sys_path)
+            copy_symlinks || symlink(hdr.link, sys_path)
         elseif hdr.type == :file
             read_data(tar, sys_path, size=hdr.size, buf=buf)
             # set executable bit if necessary
@@ -74,6 +75,89 @@ function extract_tarball(
             error("unsupported tarball entry type: $(hdr.type)")
         end
     end
+    copy_symlinks || return
+
+    # resolve the internal targets of symlinks
+    for (path, what) in paths
+        what isa AbstractString || continue
+        target = link_target(paths, path, what)
+        paths[path] = something(target, :symlink)
+    end
+
+    # follow chains of symlinks
+    follow(seen::Vector, what::Symbol) =
+        what == :symlink ? what : seen[end]
+    follow(seen::Vector, what::String) =
+        what in seen ? :symlink : follow(push!(seen, what), paths[what])
+    for (path, what) in paths
+        what isa AbstractString || continue
+        paths[path] = follow([path], what)
+    end
+
+    # copies that need to be made
+    copies = Pair{String,String}[]
+    for (path, what) in paths
+        what isa AbstractString || continue
+        push!(copies, path => what)
+    end
+    sort!(copies, by=last)
+
+    while !isempty(copies)
+        i = 1
+        while i ≤ length(copies)
+            path, what = copies[i]
+            # check if source is complete yet
+            if any(startswith(p, "$what/") for (p, w) in copies)
+                # `what` is an incomplete directory
+                # need to wait for source to be complete
+                i += 1
+            else
+                # source complete, can copy now
+                deleteat!(copies, i)
+                src = reduce(joinpath, init=root, split(what, '/'))
+                dst = reduce(joinpath, init=root, split(path, '/'))
+                cp(src, dst)
+            end
+        end
+    end
+end
+
+# resolve symlink target or nothing if not valid
+function link_target(
+    paths::Dict{String,Union{String,Symbol}},
+    path::AbstractString,
+    link::AbstractString,
+)
+    first(link) == '/' && return
+    path_parts = split(path, r"/+")
+    link_parts = split(link, r"/+")
+    pop!(path_parts)
+    part = nothing # remember the last part
+    while !isempty(link_parts)
+        part = popfirst!(link_parts)
+        part in ("", ".") && continue
+        if part == ".."
+            isempty(path_parts) && return
+            pop!(path_parts)
+        else
+            push!(path_parts, part)
+            prefix = join(path_parts, '/')
+            prefix in keys(paths) || return
+            isempty(link_parts) && break
+            what = paths[prefix]
+            if what isa AbstractString
+                prefix = link_target(paths, prefix, what)
+                path_parts = split(prefix, '/')
+            end
+        end
+    end
+    isempty(path_parts) && return
+    target = join(path_parts, '/')
+    # if link ends in `/` or `.` target must be a directory
+    part in ("", ".") && paths[target] != :directory && return
+    # can't copy a circular link to a prefix of itself
+    (path == target || startswith(path, "$target/")) && return
+    return target
 end
 
 function git_tree_hash(
@@ -210,8 +294,9 @@ function read_tarball(
     skeleton::IO = devnull,
 )
     write_skeleton_header(skeleton, buf=buf)
+    # symbols for path types except symlinks store the link
+    paths = Dict{String,Union{Symbol,String}}()
     globals = Dict{String,String}()
-    links = Set{String}()
     while !eof(tar)
         hdr = read_header(tar, globals, buf=buf, tee=skeleton)
         hdr === nothing && break
@@ -226,18 +311,15 @@ function read_tarball(
         for part in split(hdr.path, '/')
             (isempty(part) || part == ".") && continue
             # check_header doesn't allow ".." in path
-            path in links && error("""
+            get(paths, path, nothing) isa String && error("""
             Refusing to extract path with symlink prefix, possible attack
+             * path to extract: $(repr(hdr.path))
              * symlink prefix: $(repr(path))
-             * extracted path: $(repr(hdr.path))
             """)
+            isempty(path) || (paths[path] = :directory)
             path = isempty(path) ? part : "$path/$part"
         end
-        if hdr.type == :symlink
-            push!(links, path)
-        else
-            delete!(links, path)
-        end
+        paths[path] = hdr.type == :symlink ? hdr.link : hdr.type
         before = applicable(position, tar) ? position(tar) : 0
         callback(hdr, split(path, '/', keepempty=false))
         applicable(position, tar) || continue
@@ -246,6 +328,7 @@ function read_tarball(
         advanced == expected ||
             error("callback read $advanced bytes instead of $expected")
     end
+    return paths
 end
 
 function read_header(
