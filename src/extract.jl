@@ -250,17 +250,17 @@ function git_file_hash(
     # TODO: this largely duplicates the logic of read_data
     # read_data could be used directly if SHA offered an interface
     # where you write data to an IO object and it maintains a hash
-    t = round_up(size)
-    while size > 0
-        n = min(t, length(buf))
-        r = readbytes!(tar, buf, n)
-        r < n && eof(tar) && throw(EOFError())
-        v = view(buf, 1:min(r, size))
-        SHA.update!(ctx, v)
-        size -= length(v)
-        t -= r
+    padded_size = round_up(size)
+    while padded_size > 0
+        max_read_len = min(padded_size, length(buf))
+        read_len = readbytes!(tar, buf, max_read_len)
+        read_len < max_read_len && eof(tar) && throw(EOFError())
+        nonpadded_view = view(buf, 1:min(read_len, size))
+        SHA.update!(ctx, nonpadded_view)
+        size -= length(nonpadded_view)
+        padded_size -= read_len
     end
-    @assert size == t == 0
+    @assert size == padded_size == 0
     return bytes2hex(SHA.digest!(ctx))
 end
 
@@ -516,16 +516,16 @@ function read_data(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
 )::Nothing
-    t = round_up(size)
-    while size > 0
-        n = min(t, length(buf))
-        r = readbytes!(tar, buf, n)
-        write(tee, view(buf, 1:r))
-        r < n && eof(io) && error("premature end of tar file")
-        size -= write(file, view(buf, 1:min(r, size)))
-        t -= r
+    padded_size = round_up(size)
+    while padded_size > 0
+        max_read_len = min(padded_size, length(buf))
+        read_len = readbytes!(tar, buf, max_read_len)
+        write(tee, view(buf, 1:read_len))
+        read_len < max_read_len && eof(tar) && error("premature end of tar file")
+        size -= write(file, view(buf, 1:min(read_len, size)))
+        padded_size -= read_len
     end
-    @assert size == t == 0
+    @assert size == padded_size == 0
     return
 end
 

@@ -1,6 +1,7 @@
 using Test
 using Random
 using ArgTools
+using SimpleBufferStream
 
 if !Sys.iswindows()
     using Tar_jll
@@ -104,7 +105,13 @@ function make_test_dir(gen_skip::Bool=false)
         touch(joinpath(dir, "file.skip"))
     end
     mkdir(joinpath(dir, "dir"))
-    touch(joinpath(dir, "dir", "file"))
+
+    # Create a file that actually has content
+    fpath = joinpath(dir, "dir", "file")
+    touch(fpath)
+    open(fpath, write=true) do io
+        write(io, rand(UInt8, 1000))
+    end
     mkdir(joinpath(dir, "empty"))
     if gen_skip
         touch(joinpath(dir, "dir", "file.skip"))
@@ -146,4 +153,34 @@ end
 
 function tar_write_dir(io::IO, path::String, mode::Integer=0o755)
     Tar.write_header(io, Tar.Header(path, :directory, mode, 0, ""))
+end
+
+"""
+    ChaosBufferStream(input::IO; chunksizes, sleepamnts)
+
+Acts as a highly-inconvenient BufferStream, allowing tests to purposefully break
+up their data flow reads/writes into chunks of random size (taken via `rand(chunksizes)`)
+and with a pause of `rand(sleepamnts)` in between each chunk.
+
+Usage example:
+
+    t_hash = Tar.tree_hash(ChaosBufferStream(io))
+
+Or slightly more complicated:
+
+    http_io = BufferStream()
+    @async HTTP.get(url; response_stream=http_io)
+    t_hash = Tar.tree_hash(ChaosBufferStream(http_io; chunksizes=4000:8000, sleepamnts=[1e-3, 2e-3]))
+"""
+function ChaosBufferStream(input::IO; chunksizes = 1024:2048, sleepamnts = 1e-3:1e-4:5e-3)
+    output = BufferStream()
+    @async begin
+        while !eof(input)
+            sleep(rand(sleepamnts))
+            chunk = read(input, rand(chunksizes))
+            write(output, chunk)
+        end
+        close(output)
+    end
+    return output
 end
