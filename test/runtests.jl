@@ -1,5 +1,43 @@
 include("setup.jl")
 
+@testset "ChaosBufferStream" begin
+    @testset "constant usage" begin
+        io = BufferStream()
+        cio = ChaosBufferStream(io; chunksizes=[17], sleepamnts=[0.001])
+        write(io, rand(UInt8, 30))
+        close(io)
+
+        # Test that data comes out in 17-byte chunks (except for the last)
+        buff = Array{UInt8}(undef, 30)
+        t = @elapsed begin
+            @test readbytes!(cio, buff, 30) == 17
+            @test readbytes!(cio, buff, 30) == 13
+        end
+        @test t >= 0.001
+    end
+
+    @testset "random usage" begin
+        io = BufferStream()
+        chunksizes = 5:10
+        cio = ChaosBufferStream(io; chunksizes=chunksizes, sleepamnts=[0.0])
+        write(io, rand(UInt8, 3000))
+        close(io)
+
+        buff = Array{UInt8}(undef, 10)
+        while !eof(cio)
+            r = readbytes!(cio, buff, 10)
+            # In normal operation, the chunk size must be one of
+            # the given chunksizes, but at the end of the stream
+            # it is allowed to be less.
+            if !eof(cio)
+                @test r ∈ chunksizes
+            else
+                @test r <= maximum(chunksizes)
+            end
+        end
+    end
+end
+
 @testset "empty tarball" begin
     dir = mktempdir()
     tarball = Tar.create(dir)
@@ -426,6 +464,32 @@ end
                 touch(joinpath(dir, "file"))
                 @test_throws ErrorException Tar.extract(tar, dir)
                 rm(dir, recursive=true)
+            end
+        end
+    end
+
+    @testset "inconvenient stream buffering" begin
+        # We will try feeding in an adversarial length that used to cause an assertion error
+        open(tarball, read=true) do io
+            # This will cause an assertion error because we know the padded space beyond the
+            # end of the test file content will be larger than 17 bytes, causing the `for`
+            # loop to exit early, failing the assertion.
+            @test hash == Tar.tree_hash(ChaosBufferStream(io; chunksizes=[17]); skip_empty=true)
+        end
+
+        # This also affected read_data()
+        mktempdir() do dir
+            open(tarball, read=true) do io
+                Tar.extract(ChaosBufferStream(io; chunksizes=[17]), dir)
+                check_tree_hash(hash, dir)
+            end
+        end
+
+        # We also perform a fuzzing test to convince ourselves there are no other errors
+        # of this type within `Tar.tree_hash()`.
+        for idx in 1:100
+            open(tarball, read=true) do io
+                @test hash == Tar.tree_hash(ChaosBufferStream(io), skip_empty=true)
             end
         end
     end
