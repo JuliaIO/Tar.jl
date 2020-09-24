@@ -70,21 +70,21 @@ It is unlikely that support will be added for recording or restoring ownership o
 
 ### Permissions
 
-When it comes to permissions, `Tar` records and restores only one significant bit of information:
+Upon tarball extraction, `Tar` respects the permissions recorded for each file.
+When creating tarball, however, it ignores most permission information and normalizes permissions as follows:
+
+* files that are not executable by the owner are archived with mode `0o644`;
+* files that are executable by the owner are archived with mode `0o755`;
+* directories and symlinks are always archived with mode `0o755`.
+
+In other words, `Tar` records only one significant bit of information:
 whether plain files are executable by their owner or not.
-No permission information is recorded or restored for directories or symlinks.
+No permission information for directories or symlinks is considered significant.
 This one bit of information is the only one which makes sense across all platforms, so this choice makes `Tar`'s behavior as portable as possible.
-(Unfortunately, this is currently broken on Windows since `libuv` does not correctly support querying or changing the user executable "bit"; this is actively being worked on, however, and should be fixed in future versions of Julia.)
+On systems (like Windows) that do not use POSIX modes, whatever permission mechanism exists (_e.g._ ACLs) should be queried/modified to determine whether each file is executable by its owner or not.
+Unfortunately, this is currently broken on Windows since `libuv` does not correctly support querying or changing the user executable "bit"; this is actively being worked on, however, and should be fixed in future versions of Julia.
 
-Modes are normalized in the following manner for both tarball creation and extraction:
-
-* files that are not executable by the owner are archived/restored with mode `0o644`;
-* files that are executable by the owner are archived/restored with mode `0o755`;
-* directories and symlinks are always archived/restored with mode `0o755`.
-
-On systems (like Windows) that do not use POSIX modes, whatever permissions mechanism exists (_e.g._ ACLs) should be queried/modified to determine/set whether each file is executable by its owner or not.
-
-In the future, optional support may be added for recording and applying exact permission modes on POSIX systems.
+In the future, optional support may be added for recording exact permission modes on POSIX systems, and possibly for normalizing permissions on extraction in the same way that they are normalized upon archive creation.
 
 ### Reproducibility
 
