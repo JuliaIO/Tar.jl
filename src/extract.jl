@@ -470,7 +470,6 @@ function read_standard_header(
     chksum  = read_header_int(header_view, 148, 8)
     type    = read_header_chr(header_view, 156)
     link    = read_header_str(header_view, 157, 100)
-    magic   = read_header_str(header_view, 257, 6)
     version = read_header_str(header_view, 263, 2)
     prefix  = read_header_str(header_view, 345, 155)
     # check various fields
@@ -478,8 +477,6 @@ function read_standard_header(
     buf_sum = sum(header_view)
     chksum == buf_sum ||
         error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(header_view)))")
-    occursin(r"^ustar\s*$", magic) ||
-        error("unknown magic string for tar file: $(repr(magic))")
     occursin(r"^0* *$", version) ||
         error("unknown version string for tar file: $(repr(version))")
     path = isempty(prefix) ? name : "$prefix/$name"
