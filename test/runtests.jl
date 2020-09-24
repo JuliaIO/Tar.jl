@@ -39,21 +39,42 @@ include("setup.jl")
 end
 
 @testset "empty tarball" begin
-    dir = mktempdir()
-    tarball = Tar.create(dir)
-    rm(dir, recursive=true)
-    @test Tar.list(tarball) == [Tar.Header(".", :directory, 0o755, 0, "")]
-    test_empty_hashes(tarball)
-    dir = Tar.extract(tarball)
-    @test isempty(readdir(dir))
-    rm(dir, recursive=true)
-    open(tarball, append=true) do io
-        write(io, zeros(UInt8, 512))
+    @testset "empty file as tarball" begin
+        tarball = devnull
+        @test Tar.list(tarball) == Tar.Header[]
+        skel = tempname()
+        dir = Tar.extract(tarball, skeleton=skel)
+        @test isempty(readdir(dir))
+        rm(dir, recursive=true)
+        @test isfile(skel)
+        @test Tar.list(skel) == Tar.Header[]
+        @test Tar.list(skel, raw=true) == Tar.Header[]
+        rm(skel)
     end
-    test_empty_hashes(tarball)
-    dir = Tar.extract(tarball)
-    @test isempty(readdir(dir))
-    rm(dir, recursive=true)
+
+    @testset "create an empty tarball" begin
+        dir = mktempdir()
+        tarball = Tar.create(dir)
+        rm(dir, recursive=true)
+        @test Tar.list(tarball) == [Tar.Header(".", :directory, 0o755, 0, "")]
+        @test Tar.list(tarball, raw=true) == [Tar.Header(".", :directory, 0o755, 0, "")]
+        test_empty_hashes(tarball)
+        skel = tempname()
+        dir = Tar.extract(tarball, skeleton=skel)
+        @test isempty(readdir(dir))
+        rm(dir, recursive=true)
+        @test isfile(skel)
+        @test Tar.list(skel) == [Tar.Header(".", :directory, 0o755, 0, "")]
+        @test Tar.list(skel, raw=true) == [Tar.Header(".", :directory, 0o755, 0, "")]
+        rm(skel)
+        open(tarball, append=true) do io
+            write(io, zeros(UInt8, 512))
+        end
+        test_empty_hashes(tarball)
+        dir = Tar.extract(tarball)
+        @test isempty(readdir(dir))
+        rm(dir, recursive=true)
+    end
 end
 
 @testset "test tarball" begin

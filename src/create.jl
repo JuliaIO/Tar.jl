@@ -26,7 +26,7 @@ function recreate_tarball(
     check_skeleton_header(skeleton, buf=buf)
     globals = Dict{String,String}()
     while !eof(skeleton)
-        hdr = read_header(skeleton, globals, buf=buf, tee=tar)
+        hdr = read_header(skeleton, globals=globals, buf=buf, tee=tar)
         hdr === nothing && break
         check_header(hdr)
         sys_path = joinpath(root, hdr.path)
