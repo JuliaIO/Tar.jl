@@ -304,6 +304,44 @@ list other kinds of records if called with `strict=false`.
 
 <!-- END: copied from inline doc strings -->
 
+### Compression
+
+It is typical to compress tarballs when saving of transferring them.
+In the UNIX tradition of doing one thing and doing it well, the `Tar` package does not do any kind of compression and instead makes it easy to compose it's API with external compression tools.
+The simplest way to read a compressed archive is to use a command-line tool to decompress it.
+For example:
+```jl
+Tar.list(`gzcat $tarball`)
+Tar.extract(`gzcat $tarball`)
+```
+This will spawn the `gzcat $tarball` command, read the uncompressed tarball data from the output of that process, and then close the process.
+Creating a tarball with the `gzip` command is nearly as easy:
+```jl
+Tar.create(dir, pipeline(`gzip -9`, tarball))
+```
+This assumes that `dir` is the directory you want to archive and `tarball` is the path you want to create as a compressed archive.
+
+If you want to compress or decompress a tarball in the same process, you can using various [[TranscodingStreams](https://github.com/JuliaIO/TranscodingStreams.jl) packages:
+```jl
+using CodecZlib
+
+tar_gz = open(tarball, write=true)
+tar = GzipCompressorStream(tar_gz)
+Tar.create(dir, tar)
+close(tar)
+```
+This assumes that `dir` is the directory you want to archive and `tarball` is the path you want to create as a compressed archive.
+You can decompress in-process in a similar manner:
+```jl
+using CodecZlib
+
+tar_gz = open(tarball)
+tar = GzipDecompressorStream(tar_gz)
+dir = Tar.extract(tar)
+close(tar)
+```
+This assumes that `tarball` is the path of the compressed archive you want to extract.
+
 ### API comparison with command-line tar
 
 It might be helpful to compare the `Tar` API with command-line `tar`.
