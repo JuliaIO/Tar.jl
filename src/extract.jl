@@ -298,7 +298,7 @@ function read_tarball(
     paths = Dict{String,Union{Symbol,String}}()
     globals = Dict{String,String}()
     while !eof(tar)
-        hdr = read_header(tar, globals, buf=buf, tee=skeleton)
+        hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
         hdr === nothing && break
         # check if we should extract or skip
         if !predicate(hdr)
@@ -332,8 +332,8 @@ function read_tarball(
 end
 
 function read_header(
-    io::IO,
-    globals::Dict{String,String} = Dict{String,String}();
+    io::IO;
+    globals::Dict{String,String} = Dict{String,String}(),
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
 )
