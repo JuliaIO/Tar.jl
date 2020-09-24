@@ -8,25 +8,34 @@ end
 
 function iterate_headers(
     callback::Function,
-    tar::IO,
-    read_hdr::Function;
-    strict::Bool = true,
+    tar::IO;
+    raw::Bool = false,
+    strict::Bool = !raw,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    if !eof(tar)
-        mark(tar)
-        hdr = read_standard_header(tar, buf=buf)
-        if hdr.type == :g && hdr.path == SKELETON_MAGIC
-            skip_data(tar, hdr.size)
-            skeleton = true
-            unmark(tar)
-        else
-            skeleton = false
-            reset(tar)
+    eof(tar) && return
+    hdr = read_standard_header(tar, buf=buf)
+    hdr == nothing && return
+    if !raw
+        globals = Dict{String,String}()
+    end
+    if hdr.type == :g && hdr.path == SKELETON_MAGIC
+        skip_data(tar, hdr.size)
+        skeleton = true
+    else
+        if !raw
+            hdr = read_header(tar, hdr, globals=globals, buf=buf)
         end
+        skeleton = false
+        @goto loop
     end
     while !eof(tar)
-        hdr = read_hdr(tar, buf=buf)
+        hdr = if raw
+            read_standard_header(tar, buf=buf)
+        else
+            read_header(tar, globals=globals, buf=buf)
+        end
+    @label loop
         hdr === nothing && break
         strict && check_header(hdr)
         callback(hdr)
@@ -339,6 +348,16 @@ function read_header(
 )
     hdr = read_standard_header(io, buf=buf, tee=tee)
     hdr === nothing && return nothing
+    read_header(io, hdr, globals=globals, buf=buf, tee=tee)
+end
+
+function read_header(
+    io::IO,
+    hdr::Header; # initial header
+    globals::Dict{String,String} = Dict{String,String}(),
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    tee::IO = devnull,
+)
     # process zero or more extended headers
     metadata = copy(globals)
     while true
