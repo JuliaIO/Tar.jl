@@ -70,21 +70,21 @@ It is unlikely that support will be added for recording or restoring ownership o
 
 ### Permissions
 
-When it comes to permissions, `Tar` records and restores only one significant bit of information:
+Upon tarball extraction, `Tar` respects the permissions recorded for each file.
+When creating tarball, however, it ignores most permission information and normalizes permissions as follows:
+
+* files that are not executable by the owner are archived with mode `0o644`;
+* files that are executable by the owner are archived with mode `0o755`;
+* directories and symlinks are always archived with mode `0o755`.
+
+In other words, `Tar` records only one significant bit of information:
 whether plain files are executable by their owner or not.
-No permission information is recorded or restored for directories or symlinks.
+No permission information for directories or symlinks is considered significant.
 This one bit of information is the only one which makes sense across all platforms, so this choice makes `Tar`'s behavior as portable as possible.
-(Unfortunately, this is currently broken on Windows since `libuv` does not correctly support querying or changing the user executable "bit"; this is actively being worked on, however, and should be fixed in future versions of Julia.)
+On systems (like Windows) that do not use POSIX modes, whatever permission mechanism exists (_e.g._ ACLs) should be queried/modified to determine whether each file is executable by its owner or not.
+Unfortunately, this is currently broken on Windows since `libuv` does not correctly support querying or changing the user executable "bit"; this is actively being worked on, however, and should be fixed in future versions of Julia.
 
-Modes are normalized in the following manner for both tarball creation and extraction:
-
-* files that are not executable by the owner are archived/restored with mode `0o644`;
-* files that are executable by the owner are archived/restored with mode `0o755`;
-* directories and symlinks are always archived/restored with mode `0o755`.
-
-On systems (like Windows) that do not use POSIX modes, whatever permissions mechanism exists (_e.g._ ACLs) should be queried/modified to determine/set whether each file is executable by its owner or not.
-
-In the future, optional support may be added for recording and applying exact permission modes on POSIX systems.
+In the future, optional support may be added for recording exact permission modes on POSIX systems, and possibly for normalizing permissions on extraction in the same way that they are normalized upon archive creation.
 
 ### Reproducibility
 
@@ -303,6 +303,44 @@ types other than `file`, `symlink` and `directory`; [`list`](#Tarlist) will only
 list other kinds of records if called with `strict=false`.
 
 <!-- END: copied from inline doc strings -->
+
+### Compression
+
+It is typical to compress tarballs when saving of transferring them.
+In the UNIX tradition of doing one thing and doing it well, the `Tar` package does not do any kind of compression and instead makes it easy to compose it's API with external compression tools.
+The simplest way to read a compressed archive is to use a command-line tool to decompress it.
+For example:
+```jl
+Tar.list(`gzcat $tarball`)
+Tar.extract(`gzcat $tarball`)
+```
+This will spawn the `gzcat $tarball` command, read the uncompressed tarball data from the output of that process, and then close the process.
+Creating a tarball with the `gzip` command is nearly as easy:
+```jl
+Tar.create(dir, pipeline(`gzip -9`, tarball))
+```
+This assumes that `dir` is the directory you want to archive and `tarball` is the path you want to create as a compressed archive.
+
+If you want to compress or decompress a tarball in the same process, you can using various [[TranscodingStreams](https://github.com/JuliaIO/TranscodingStreams.jl) packages:
+```jl
+using CodecZlib
+
+tar_gz = open(tarball, write=true)
+tar = GzipCompressorStream(tar_gz)
+Tar.create(dir, tar)
+close(tar)
+```
+This assumes that `dir` is the directory you want to archive and `tarball` is the path you want to create as a compressed archive.
+You can decompress in-process in a similar manner:
+```jl
+using CodecZlib
+
+tar_gz = open(tarball)
+tar = GzipDecompressorStream(tar_gz)
+dir = Tar.extract(tar)
+close(tar)
+```
+This assumes that `tarball` is the path of the compressed archive you want to extract.
 
 ### API comparison with command-line tar
 
