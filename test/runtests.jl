@@ -117,11 +117,10 @@ end
             end
         end
     end
-    # skip `tar` tests when it doesn't exist or when we're on windows
-    if Sys.which("tar") != nothing && !Sys.iswindows()
+    if @isdefined(gtar)
         @testset "extract with `tar` command" begin
             root = mktempdir()
-            run(`tar -C $root -xf $tarball`)
+            gtar(gtar -> run(`$gtar -C $root -xf $tarball`))
             check_tree_hash(hash, root)
         end
     end
@@ -155,7 +154,7 @@ end
     end
 end
 
-if !Sys.iswindows()
+if @isdefined(gtar)
     @testset "POSIX extended headers" begin
         # make a test POSIX tarball with GNU `tar` from Tar_jll instead of Tar.create
         tarball, hash = make_test_tarball() do root
@@ -570,7 +569,7 @@ end
     ref = read(reference)
 
     # alternate format tarball
-    if !Sys.iswindows()
+    if @isdefined(gtar)
         # alternate tarball made by GNU tar
         alternate, hash₂ = make_test_tarball() do root
             tarball = tempname()
@@ -645,7 +644,7 @@ end
         rm(dir, recursive=true)
     end
     tarballs[make_test_tarball()[1]] = true
-    if !Sys.iswindows()
+    if @isdefined(gtar)
         tarball, _ = make_test_tarball() do root
             tarball = tempname()
             gtar(gtar -> run(`$gtar --format=gnu -C $root -cf $tarball .`))
@@ -674,7 +673,7 @@ end
         arg_readers(skeleton) do skel
             @arg_test skel @test hdrs == Tar.list(skel)
         end
-        if flag && !Sys.iswindows()
+        if flag && @isdefined(gtar)
             # GNU tar can list skeleton files of tarballs we generated
             paths = sort!([hdr.path for hdr in hdrs])
             @test paths == sort!(gtar(gtar -> readlines(`$gtar -tf $skeleton`)))
