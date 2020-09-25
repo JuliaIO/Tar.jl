@@ -3,8 +3,8 @@ using Random
 using ArgTools
 using SimpleBufferStream
 
-if !Sys.iswindows()
-    using Tar_jll
+using Tar_jll
+if isdefined(Tar_jll, :tar)
     const gtar = Tar_jll.tar
 end
 
