@@ -250,7 +250,7 @@ end
 
 function git_file_hash(
     tar::IO,
-    size::Int,
+    size::Integer,
     HashType::DataType;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
