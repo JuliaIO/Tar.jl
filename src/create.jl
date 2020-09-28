@@ -146,8 +146,8 @@ function write_header(
             prefix = name = "" # empty in standard header
         end
     end
-    if size ≥ 8^12
-        push!(extended, "size" => String(size))
+    if (size >>> (3*12)) != 0
+        push!(extended, "size" => string(size))
         # still written in binary in standard header
     end
 
