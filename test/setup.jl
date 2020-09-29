@@ -1,15 +1,20 @@
 using Test
 using Random
 using ArgTools
-using SimpleBufferStream
-
-using Tar_jll
-if isdefined(Tar_jll, :tar)
-    const gtar = Tar_jll.tar
-end
 
 import Tar
 import Pkg.GitTools
+
+const NON_STDLIB_TESTS = Main == @__MODULE__
+
+if NON_STDLIB_TESTS
+    using SimpleBufferStream
+
+    using Tar_jll
+    if isdefined(Tar_jll, :tar)
+        const gtar = Tar_jll.tar
+    end
+end
 
 tree_hash(path::AbstractString) = bytes2hex(GitTools.tree_hash(path))
 
