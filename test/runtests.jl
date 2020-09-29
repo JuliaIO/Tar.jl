@@ -1,5 +1,6 @@
 include("setup.jl")
 
+NON_STDLIB_TESTS &&
 @testset "ChaosBufferStream" begin
     @testset "constant usage" begin
         io = BufferStream()
@@ -488,6 +489,7 @@ end
         end
     end
 
+    NON_STDLIB_TESTS &&
     @testset "inconvenient stream buffering" begin
         # We will try feeding in an adversarial length that used to cause an assertion error
         open(tarball, read=true) do io
