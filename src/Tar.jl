@@ -1,7 +1,6 @@
 module Tar
 
 using ArgTools
-using Logging
 
 const true_predicate = _ -> true
 
@@ -22,16 +21,13 @@ const skip_buffer = UInt8[]
 function can_symlink(dir::AbstractString)
     # guaranteed to be an empty directory
     link_path = joinpath(dir, "link")
-    log_level = Logging.min_enabled_level(Logging.current_logger())
     return try
-        Logging.disable_logging(Logging.Warn)
         symlink("target", link_path)
         true
     catch err
         err isa Base.IOError || rethrow()
         false
     finally
-        Logging.disable_logging(log_level-1)
         rm(link_path, force=true)
     end
 end
