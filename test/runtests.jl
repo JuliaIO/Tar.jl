@@ -207,8 +207,9 @@ end
     @test_throws ErrorException Tar.tree_hash(tarball)
     rm(tarball)
     # attempt to write through absolute link
+    tmp = mktempdir()
     tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, "/tmp"))
+    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, tmp))
     Tar.write_header(io, Tar.Header("link/attack", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
@@ -216,7 +217,7 @@ end
     rm(tarball)
     # same attack with some obfuscation
     tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, "/tmp"))
+    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, tmp))
     Tar.write_header(io, Tar.Header("./link/attack", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
@@ -224,20 +225,23 @@ end
     rm(tarball)
     # same attack with different obfuscation
     tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, "/tmp"))
+    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, tmp))
     Tar.write_header(io, Tar.Header("dir/../link/attack", :file, 0o644, 0, ""))
     close(io)
     @test_throws ErrorException Tar.extract(tarball)
     @test_throws ErrorException Tar.tree_hash(tarball)
     rm(tarball)
+    # check temp dir is empty, remove it
+    @test isempty(readdir(tmp))
+    rm(tmp)
 end
 
 !Sys.iswindows() &&
 @testset "symlink overwrite" begin
-    # allowable and should work
+    tmp = mktempdir()
     @testset "allow overwriting a symlink" begin
         tarball₁, io = mktemp()
-        Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, "/tmp"))
+        Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, tmp))
         Tar.write_header(io, Tar.Header("path", :file, 0o644, 0, ""))
         close(io)
         hash = Tar.tree_hash(tarball₁)
@@ -257,7 +261,7 @@ end
     @testset "allow write into directory overwriting a symlink" begin
         # make sure "path" is removed from links set
         tarball₁, io = mktemp()
-        Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, "/tmp"))
+        Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, tmp))
         Tar.write_header(io, Tar.Header("path", :directory, 0o755, 0, ""))
         Tar.write_header(io, Tar.Header("path/file", :file, 0o644, 0, ""))
         close(io)
@@ -275,9 +279,13 @@ end
         rm(tarball₁)
         rm(tarball₂)
     end
+    # check temp dir is empty, remove it
+    @test isempty(readdir(tmp))
+    rm(tmp)
 end
 
 @testset "copy symlinks" begin
+    tmp = mktempdir()
     data₁ = randstring(12)
     data₂ = randstring(12)
     tarball, io = mktemp()
@@ -294,7 +302,7 @@ end
     tar_write_link(io, "link-cycle-B", "link-cycle-A")
     tar_write_link(io, "link-cycle-C", "link-cycle-B")
     tar_write_dir(io,  "dir")
-    tar_write_link(io, "link-root", "/root")
+    tar_write_link(io, "link-tmp", tmp)
     tar_write_link(io, "link-dot-dot", "..")
     tar_write_link(io, "link-dot", ".")
     tar_write_link(io, "link-dir", "dir")
@@ -341,7 +349,7 @@ end
     test_none("link-cycle-B")
     test_none("link-cycle-C")
     test_dir("dir")
-    test_none("link-root")
+    test_none("link-tmp")
     test_none("link-dot-dot")
     test_none("link-dot")
     test_dir("link-dir", "dir")
@@ -360,6 +368,9 @@ end
     test_none("dir/link-dot-dot-dir-self")
     test_file("dir/file", data₂)
     rm(dir, recursive=true)
+    # check temp dir is empty, remove it
+    @test isempty(readdir(tmp))
+    rm(tmp)
 end
 
 @testset "API: create" begin
