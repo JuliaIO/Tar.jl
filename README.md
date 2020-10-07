@@ -125,8 +125,8 @@ None of these are exported, however: the recommended usage is to do `import Tar`
 
 * `predicate :: String --> Bool`
 * `dir       :: AbstractString`
-* `tarball   :: Union{AbstractString, IO}`
-* `skeleton  :: Union{AbstractString, IO}`
+* `tarball   :: Union{AbstractString, AbstractCmd, IO}`
+* `skeleton  :: Union{AbstractString, AbstractCmd, IO}`
 
 Create a tar archive ("tarball") of the directory `dir`. The resulting archive
 is written to the path `tarball` or if no path is specified, a temporary path is
@@ -188,7 +188,7 @@ copy symlinks if they cannot be created.
     list(callback, tarball; [ strict = true ])
 
 * `callback  :: Header --> Bool`
-* `tarball   :: Union{AbstractString, IO}`
+* `tarball   :: Union{AbstractString, AbstractCmd, IO}`
 * `strict    :: Bool`
 
 List the contents of a tar archive ("tarball") located at the path `tarball`. If
@@ -213,8 +213,8 @@ the headers of the skeleton file.
     rewrite([ predicate, ], old_tarball, [ new_tarball ]) -> new_tarball
 
 * `predicate   :: Header --> Bool`
-* `old_tarball :: Union{AbstractString, IO}`
-* `new_tarball :: Union{AbstractString, IO}`
+* `old_tarball :: Union{AbstractString, AbstractCmd, IO}`
+* `new_tarball :: Union{AbstractString, AbstractCmd, IO}`
 
 Rewrite `old_tarball` to the standard format that `create` generates, while also
 checking that it doesn't contain anything that would cause `extract` to raise an
@@ -239,7 +239,7 @@ record what content is encountered during the rewrite process.
               [ skip_empty = false ]) -> hash::String
 
 * `predicate  :: Header --> Bool`
-* `tarball    :: Union{AbstractString, IO}`
+* `tarball    :: Union{AbstractString, AbstractCmd, IO}`
 * `algorithm  :: AbstractString`
 * `skip_empty :: Bool`
 
