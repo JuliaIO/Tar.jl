@@ -362,12 +362,14 @@ function read_header(
     metadata = copy(globals)
     while true
         if hdr.type in (:g, :x) # POSIX extended headers
-            read_extended_metadata(io, hdr.size, buf=buf, tee=tee) do key, val
-                if key in ("size", "path", "linkpath")
-                    if hdr.type == :g
-                        globals[key] = val
+            let hdr=hdr         #15276
+                read_extended_metadata(io, hdr.size, buf=buf, tee=tee) do key, val
+                    if key in ("size", "path", "linkpath")
+                        if hdr.type == :g
+                            globals[key] = val
+                        end
+                        metadata[key] = val
                     end
-                    metadata[key] = val
                 end
             end
         elseif hdr.path == "././@LongLink" && hdr.type in (:L, :K)
