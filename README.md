@@ -8,102 +8,6 @@ It is designed to support using the TAR format as a mechanism for sending trees 
 Because of this design goal, `Tar` intentionally ignores much of the metadata included in the TAR format, which does not make sense for the data transfer use case.
 The package also does not aim to read or create legacy non-POSIX variants of the TAR format, although it does support reading GNU long name and long link extensions.
 
-## Design & Features
-
-Unlike the `tar` command line tool, which was originally designed to archive data in order to restore it back to the same system or to a replica thereof, the `Tar` package is designed for using the TAR format to transfer trees of files and directories from one system to another.
-This design goal means that some metadata fields supported by the TAR format and used by default by historical `tar` tools are not used or supported by `Tar`.
-In short, the choice of features and defaults for `Tar` are designed to support transfer of data, rather than backup and restoration.
-
-The TAR format can, for example, record the name and ID of the user that owns each file.
-Recording this information makes perfect sense when using tarballs for backup:
-the `tar` program should run as root when restoring data, so it can restore the original owner of each file and directory.
-On the other hand, this ownership information is of no use when using the TAR format to transfer data from one system to another:
-the user names and IDs will not generally be the same on different systems, and the tool should _not_ be run as `root`, so it cannot change the owner of anything it extracts.
-For data transfer, ownership metadata should be disregarded and need not be recorded in the first place.
-
-Similarly, it makes little sense, when using tarballs for data transfer, to copy the modification time of each file from the source system.
-Those time stamps are unlikely to be relevant on the destination system, and in some cases, clock skew between the systems could mean that time stamps from the source appear to be in the future at the destination.
-This can confuse some programs and may even be perceived as an attempted security breach;
-most `tar` command line tools print warnings when extracting files with time stamps from the future.
-When using the TAR format for data transfer, it is better to ignore time stamps and just let the extracted contents have natural modification times.
-
-The features and defaults of the `Tar` package are guided by the principle that it uses the TAR format for transmitting data, not as a tool for backup and restoration.
-If you want to use the TAR format for archival purposes, you are likely better off using a traditional command line tool like [GNU tar](https://www.gnu.org/software/tar/).
-If, on the other hand, you want to use the TAR format to transmit data from one system to another, then you've come to the right place.
-
-### File Types
-
-Since `Tar` is designed for transmission of file and directory trees, it supports only the following file types:
-
-* plain files
-* directories
-* symlinks
-
-The `Tar` package does not support other file types that the TAR format can represent, including: hard links, character devices, block devices, and FIFOs.
-If you attempt to create or extract an archive that contains any of these kinds of entries, `Tar` will raise an error.
-You can, however, list the contents of a tarball containing other kinds of entries by passing the `strict=false` flag to the `list` function; without this option, `list` raises the same error as `extract` would.
-
-In the future, optional support may be added for using hard links within archives to avoid duplicating identical files.
-
-### Time Stamps
-
-Also in accordance with its design goal as a data transfer tool, the `Tar` package does not record or set modification times upon tarball creation and extraction.
-When creating a tarball, it sets the time stamp of each entry to `0`, representing the UNIX epoch (Jan 1st, 1970).
-When extracting a tarball, it ignores the time stamps of entries and lets all extracted content have "natural" modification times based on when each file or directory is extracted.
-
-In the future, optional support may be added for recording and restoring time stamps.
-
-### Users & Groups
-
-`Tar` ignores user and group names and IDs when creating and extracting tarballs.
-This is due to two facts:
-
-* names and IDs on source and destination systems will generally not match;
-* names and IDs can only be changed if `Tar` is run with elevated privileges.
-
-The first fact means that it probably doesn't make sense to try to restore ownership when transferring data, while the second fact means that it's probably not possible.
-Accordingly, `Tar` disregards user and group names and IDs when creating and extracting tarballs.
-During creation, the ID fields are recorded as `0` and names fields are recorded as the empty string.
-When extracting a tarball, the user and group fields are ignored entirely and all extracted content is owned by the current user.
-
-It is unlikely that support will be added for recording or restoring ownership of files or directories since that functionality only makes sense when using the TAR format for backup, a purpose better served by using a command line `tar` tool.
-
-### Permissions
-
-Upon tarball extraction, `Tar` respects the permissions recorded for each file.
-When creating tarball, however, it ignores most permission information and normalizes permissions as follows:
-
-* files that are not executable by the owner are archived with mode `0o644`;
-* files that are executable by the owner are archived with mode `0o755`;
-* directories and symlinks are always archived with mode `0o755`.
-
-In other words, `Tar` records only one significant bit of information:
-whether plain files are executable by their owner or not.
-No permission information for directories or symlinks is considered significant.
-This one bit of information is the only one which makes sense across all platforms, so this choice makes `Tar`'s behavior as portable as possible.
-On systems (like Windows) that do not use POSIX modes, whatever permission mechanism exists (_e.g._ ACLs) should be queried/modified to determine whether each file is executable by its owner or not.
-Unfortunately, this is currently broken on Windows since `libuv` does not correctly support querying or changing the user executable "bit"; this is actively being worked on, however, and should be fixed in future versions of Julia.
-
-In the future, optional support may be added for recording exact permission modes on POSIX systems, and possibly for normalizing permissions on extraction in the same way that they are normalized upon archive creation.
-
-### Reproducibility
-
-The information that `Tar` records about permissions is the same information that `git` considers to be significant when recording and hashing tree contents (admittedly not by coincidence).
-As a result, an important and useful consequence of `Tar`'s design is that it has the following properties:
-
-* if you create a tarball from a file tree and extract it, the new tree will have the same `git` tree hash as the original;
-* if you `git checkout` a file tree and archive it using `Tar`, the resulting TAR archive file is always the same.
-
-One important caveat to keep in mind is that `git` ignores directories that recursively contain only directories—_i.e._ unless there's a file or a symlink somewhere, `git` will not acknowledge the existence of a subdirectory.
-This means that two trees with the same `git` tree hash can produce different tarballs if they differ by subdirectories containing no files or symlinks:
-`git` will ignore those subdirectories, while `Tar` will not.
-Therefore, they will have the same `git` tree hash, but produce different tarballs.
-Two _identical_ file trees will always produce identical tarballs, however, and that tarball should remain stable in future versions of the `Tar` package.
-
-The `tree_hash` function can be used to compute a git-style tree hash of the contents of a tarball (without needing to extract it).
-Moreover, two tarballs created by the `Tar` package will have the same hash if and only if they contain the same file tree, which is true if and only if they are identical tarballs.
-You can, however, hash tarballs not created by `Tar` this way to see if they represent the same file tree, and you can use the `skip_empty=true` option to `tree_hash` to compute the hash that `git` would assign the tree, ignoring empty directories.
-
 ## API & Usage
 
 The public API of `Tar` includes five functions and one type:
@@ -374,3 +278,99 @@ Again, `Tar.extract` will never do that—it behaves the same way for any users
 by ignoring any user/group/permission information, aside from whether plain files are executable by their owner or not.
 To suppress these behaviors with GNU tar, you can use the `--no-same-owner` and `--no-same-permissions` options;
 these options are not broadly supported by other `tar` commands, which may not have options to support these behaviors.
+
+## Design & Features
+
+Unlike the `tar` command line tool, which was originally designed to archive data in order to restore it back to the same system or to a replica thereof, the `Tar` package is designed for using the TAR format to transfer trees of files and directories from one system to another.
+This design goal means that some metadata fields supported by the TAR format and used by default by historical `tar` tools are not used or supported by `Tar`.
+In short, the choice of features and defaults for `Tar` are designed to support transfer of data, rather than backup and restoration.
+
+The TAR format can, for example, record the name and ID of the user that owns each file.
+Recording this information makes perfect sense when using tarballs for backup:
+the `tar` program should run as root when restoring data, so it can restore the original owner of each file and directory.
+On the other hand, this ownership information is of no use when using the TAR format to transfer data from one system to another:
+the user names and IDs will not generally be the same on different systems, and the tool should _not_ be run as `root`, so it cannot change the owner of anything it extracts.
+For data transfer, ownership metadata should be disregarded and need not be recorded in the first place.
+
+Similarly, it makes little sense, when using tarballs for data transfer, to copy the modification time of each file from the source system.
+Those time stamps are unlikely to be relevant on the destination system, and in some cases, clock skew between the systems could mean that time stamps from the source appear to be in the future at the destination.
+This can confuse some programs and may even be perceived as an attempted security breach;
+most `tar` command line tools print warnings when extracting files with time stamps from the future.
+When using the TAR format for data transfer, it is better to ignore time stamps and just let the extracted contents have natural modification times.
+
+The features and defaults of the `Tar` package are guided by the principle that it uses the TAR format for transmitting data, not as a tool for backup and restoration.
+If you want to use the TAR format for archival purposes, you are likely better off using a traditional command line tool like [GNU tar](https://www.gnu.org/software/tar/).
+If, on the other hand, you want to use the TAR format to transmit data from one system to another, then you've come to the right place.
+
+### File Types
+
+Since `Tar` is designed for transmission of file and directory trees, it supports only the following file types:
+
+* plain files
+* directories
+* symlinks
+
+The `Tar` package does not support other file types that the TAR format can represent, including: hard links, character devices, block devices, and FIFOs.
+If you attempt to create or extract an archive that contains any of these kinds of entries, `Tar` will raise an error.
+You can, however, list the contents of a tarball containing other kinds of entries by passing the `strict=false` flag to the `list` function; without this option, `list` raises the same error as `extract` would.
+
+In the future, optional support may be added for using hard links within archives to avoid duplicating identical files.
+
+### Time Stamps
+
+Also in accordance with its design goal as a data transfer tool, the `Tar` package does not record or set modification times upon tarball creation and extraction.
+When creating a tarball, it sets the time stamp of each entry to `0`, representing the UNIX epoch (Jan 1st, 1970).
+When extracting a tarball, it ignores the time stamps of entries and lets all extracted content have "natural" modification times based on when each file or directory is extracted.
+
+In the future, optional support may be added for recording and restoring time stamps.
+
+### Users & Groups
+
+`Tar` ignores user and group names and IDs when creating and extracting tarballs.
+This is due to two facts:
+
+* names and IDs on source and destination systems will generally not match;
+* names and IDs can only be changed if `Tar` is run with elevated privileges.
+
+The first fact means that it probably doesn't make sense to try to restore ownership when transferring data, while the second fact means that it's probably not possible.
+Accordingly, `Tar` disregards user and group names and IDs when creating and extracting tarballs.
+During creation, the ID fields are recorded as `0` and names fields are recorded as the empty string.
+When extracting a tarball, the user and group fields are ignored entirely and all extracted content is owned by the current user.
+
+It is unlikely that support will be added for recording or restoring ownership of files or directories since that functionality only makes sense when using the TAR format for backup, a purpose better served by using a command line `tar` tool.
+
+### Permissions
+
+Upon tarball extraction, `Tar` respects the permissions recorded for each file.
+When creating tarball, however, it ignores most permission information and normalizes permissions as follows:
+
+* files that are not executable by the owner are archived with mode `0o644`;
+* files that are executable by the owner are archived with mode `0o755`;
+* directories and symlinks are always archived with mode `0o755`.
+
+In other words, `Tar` records only one significant bit of information:
+whether plain files are executable by their owner or not.
+No permission information for directories or symlinks is considered significant.
+This one bit of information is the only one which makes sense across all platforms, so this choice makes `Tar`'s behavior as portable as possible.
+On systems (like Windows) that do not use POSIX modes, whatever permission mechanism exists (_e.g._ ACLs) should be queried/modified to determine whether each file is executable by its owner or not.
+Unfortunately, this is currently broken on Windows since `libuv` does not correctly support querying or changing the user executable "bit"; this is actively being worked on, however, and should be fixed in future versions of Julia.
+
+In the future, optional support may be added for recording exact permission modes on POSIX systems, and possibly for normalizing permissions on extraction in the same way that they are normalized upon archive creation.
+
+### Reproducibility
+
+The information that `Tar` records about permissions is the same information that `git` considers to be significant when recording and hashing tree contents (admittedly not by coincidence).
+As a result, an important and useful consequence of `Tar`'s design is that it has the following properties:
+
+* if you create a tarball from a file tree and extract it, the new tree will have the same `git` tree hash as the original;
+* if you `git checkout` a file tree and archive it using `Tar`, the resulting TAR archive file is always the same.
+
+One important caveat to keep in mind is that `git` ignores directories that recursively contain only directories—_i.e._ unless there's a file or a symlink somewhere, `git` will not acknowledge the existence of a subdirectory.
+This means that two trees with the same `git` tree hash can produce different tarballs if they differ by subdirectories containing no files or symlinks:
+`git` will ignore those subdirectories, while `Tar` will not.
+Therefore, they will have the same `git` tree hash, but produce different tarballs.
+Two _identical_ file trees will always produce identical tarballs, however, and that tarball should remain stable in future versions of the `Tar` package.
+
+The `tree_hash` function can be used to compute a git-style tree hash of the contents of a tarball (without needing to extract it).
+Moreover, two tarballs created by the `Tar` package will have the same hash if and only if they contain the same file tree, which is true if and only if they are identical tarballs.
+You can, however, hash tarballs not created by `Tar` this way to see if they represent the same file tree, and you can use the `skip_empty=true` option to `tree_hash` to compute the hash that `git` would assign the tree, ignoring empty directories.
