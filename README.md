@@ -154,8 +154,8 @@ record what content is encountered during the rewrite process.
 
 ```jl
 tree_hash([ predicate, ] tarball;
-            [ algorithm = "git-sha1", ]
-            [ skip_empty = false ]) -> hash::String
+          [ algorithm = "git-sha1", ]
+          [ skip_empty = false ]) -> hash::String
 ```
 * `predicate  :: Header --> Bool`
 * `tarball    :: Union{AbstractString, AbstractCmd, IO}`
