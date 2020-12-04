@@ -132,6 +132,11 @@ function extract_tarball(
                 src = reduce(joinpath, init=root, split(what, '/'))
                 dst = reduce(joinpath, init=root, split(path, '/'))
                 cp(src, dst)
+
+                # Our `cp()` doesn't copy ACL properties, so manually set them via `chmod()`
+                if Sys.iswindows()
+                    chmod(dst, filemode(src))
+                end
             end
         end
     end
