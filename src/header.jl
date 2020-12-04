@@ -97,11 +97,11 @@ function check_header(hdr::Header)
     hdr.type == :directory && hdr.size != 0 &&
         err("directory with non-zero size")
     hdr.type != :directory && endswith(hdr.path, "/") &&
-       err("non-directory path ending with '/'")
+        err("non-directory path ending with '/'")
     hdr.type != :directory && (hdr.path == "." || endswith(hdr.path, "/.")) &&
-       err("non-directory path ending with '.' component")
+        err("non-directory path ending with '.' component")
     hdr.size < 0 &&
-       err("negative file size")
+        err("negative file size")
     isempty(errors) && return
 
     # contruct error message
