@@ -74,15 +74,17 @@ function extract_tarball(
         elseif hdr.type == :file
             read_data(tar, sys_path, size=hdr.size, buf=buf)
             # change executable bit if necessary
-            if Sys.iswindows() ⊻ !iszero(0o100 & hdr.mode)
+            tar_exec = !iszero(0o100 & hdr.mode)
+            sys_exec = Sys.isexecutable(sys_path)
+            if tar_exec != sys_exec
                 mode = filemode(sys_path)
-                if Sys.iswindows()
-                    # turn off all execute bits
-                    mode &= 0o666
-                else
+                if tar_exec
                     # copy read bits to execute bits with
                     # at least the user execute bit on
                     mode |= 0o100 | (mode & 0o444) >> 2
+                else
+                    # turn off all execute bits
+                    mode &= 0o666
                 end
                 chmod(sys_path, mode)
             end
