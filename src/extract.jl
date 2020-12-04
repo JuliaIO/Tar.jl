@@ -73,12 +73,18 @@ function extract_tarball(
             copy_symlinks || symlink(hdr.link, sys_path)
         elseif hdr.type == :file
             read_data(tar, sys_path, size=hdr.size, buf=buf)
-            # set executable bit if necessary
-            if !iszero(hdr.mode & 0o100)
+            # change executable bit if necessary
+            if Sys.iswindows() ⊻ !iszero(0o100 & hdr.mode)
                 mode = filemode(sys_path)
-                # exec bits = read bits, but set user read at least:
-                chmod(sys_path, mode | ((mode & 0o444) >> 2) | 0o100)
-                # TODO: use actual umask exec bits instead?
+                if Sys.iswindows()
+                    # turn off all execute bits
+                    mode &= 0o666
+                else
+                    # copy read bits to execute bits with
+                    # at least the user execute bit on
+                    mode |= 0o100 | (mode & 0o444) >> 2
+                end
+                chmod(sys_path, mode)
             end
         else # should already be caught by check_header
             error("unsupported tarball entry type: $(hdr.type)")
@@ -126,6 +132,19 @@ function extract_tarball(
                 src = reduce(joinpath, init=root, split(what, '/'))
                 dst = reduce(joinpath, init=root, split(path, '/'))
                 cp(src, dst)
+                if Sys.iswindows()
+                    # our `cp` doesn't copy ACL properties, so manually set them via `chmod`
+                    function copy_mode(src::String, dst::String)
+                        chmod(dst, filemode(src))
+                        isdir(dst) || return
+                        for name in readdir(dst)
+                            sub_src = joinpath(src, name)
+                            sub_dst = joinpath(dst, name)
+                            copy_mode(sub_src, sub_dst)
+                        end
+                    end
+                    copy_mode(src, dst)
+                end
             end
         end
     end
