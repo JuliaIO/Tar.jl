@@ -75,7 +75,7 @@ function extract_tarball(
             read_data(tar, sys_path, size=hdr.size, buf=buf)
             # change executable bit if necessary
             tar_exec = !iszero(0o100 & hdr.mode)
-            sys_exec = Sys.isexecutable(sys_path)
+            sys_exec = Sys.iswindows() && Sys.isexecutable(sys_path)
             if tar_exec != sys_exec
                 mode = filemode(sys_path)
                 if tar_exec
