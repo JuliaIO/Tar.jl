@@ -163,7 +163,7 @@ tree_hash([ predicate, ] tarball;
 * `skip_empty :: Bool`
 
 Compute a tree hash value for the file tree that the tarball contains. By
-default, this uses git's tree hashing algorigthm with the SHA1 secure hash
+default, this uses git's tree hashing algorithm with the SHA1 secure hash
 function (like current versions of git). This means that for any tarball whose
 file tree git can represent—i.e. one with only files, symlinks and non-empty
 directories—the hash value computed by this function will be the same as the
@@ -188,7 +188,7 @@ using in the future (due to known attacks on SHA1). Support for other file tree
 hashing algorithms may be added in the future.
 
 The `skip_empty` option controls whether directories in the tarball which
-recursiviely contain no files or symlinks are included in the hash or ignored.
+recursively contain no files or symlinks are included in the hash or ignored.
 In general, if you are hashing the content of a tarball or a file tree, you care
 about all directories, not just non-empty ones, so including these in the
 computed hash is the default. So why does this function even provide the option
