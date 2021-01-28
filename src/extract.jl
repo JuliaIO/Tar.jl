@@ -590,3 +590,46 @@ function read_data(
     r < n && error("premature end of tar file")
     return view(buf, 1:size)
 end
+
+
+"""
+    extract_file(predicate::Funtion, tarball, out) -> Vector{Header}
+    extract_file(predicate::AbstractString, tarball, out) -> Header
+
+Accepted argument types:
+ * `predicate :: Union{AbstractString, Function}`
+ * `tarball   :: Union{AbstractString, IO, Cmd}`
+ * `out       :: Union{AbstractString, IO, Cmd}`
+
+Read file(s) matching the predicate from `tarball` and write to `out`.
+Return the [`Header`](@ref)s of the matchin files.
+
+If `predicate::Function` it should take a `Header` as the only input
+argument and return `true`/`false`.
+If `predicate::String` it is interpreted as a path relative the
+tarball root and must only match a single entry.
+"""
+function extract_file(predicate::Function, tarball::ArgRead, out::ArgWrite)::Vector{Header}
+    headers = Header[]
+    arg_read(tarball) do tar; arg_write(out) do io
+        read_tarball(predicate, tar) do hdr, _
+            if hdr.type == :file # TODO: read symlinks??
+                push!(headers, hdr)
+                read_data(tar, io, size=hdr.size)
+            end
+        end
+    end end
+    return headers
+end
+function extract_file(predicate::AbstractString, tarball::ArgRead, out::ArgWrite)::Header
+    parts = filter!(x -> x != ".", splitpath(predicate))
+    headers = extract_file(tarball, out) do hdr
+        hdr_parts = filter!(x -> x != ".", splitpath(hdr.path))
+        hdr.type == :file && parts == hdr_parts
+    end
+    if length(headers) != 1
+        s = length(headers) == 0 ? "no" : "multiple"
+        throw(ArgumentError("$s files in the tarball matches the filename $predicate"))
+    end
+    return headers[1]
+end
