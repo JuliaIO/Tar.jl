@@ -611,11 +611,12 @@ tarball root and must only match a single entry.
 """
 function extract_file(predicate::Function, tarball::ArgRead, out::ArgWrite)::Vector{Header}
     headers = Header[]
+    buf = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE)
     arg_read(tarball) do tar; arg_write(out) do io
         read_tarball(predicate, tar) do hdr, _
             if hdr.type == :file # TODO: read symlinks??
                 push!(headers, hdr)
-                read_data(tar, io, size=hdr.size)
+                read_data(tar, io; size=hdr.size, buf=buf)
             end
         end
     end end
