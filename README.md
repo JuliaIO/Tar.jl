@@ -98,6 +98,24 @@ will also not be copied and will instead be skipped. By default, `extract` will
 detect whether symlinks can be created in `dir` or not and will automatically
 copy symlinks if they cannot be created.
 
+### `Tar.extract_file`
+
+```jl
+extract_file(predicate::Function, tarball, out) -> Vector{Header}
+extract_file(predicate::AbstractString, tarball, out) -> Header
+```
+* `predicate :: Union{Function, AbstractString}`
+* `tarball   :: Union{AbstractString, AbstractCmd, IO}`
+* `out       :: Union{AbstractString, AbstractCmd, IO}`
+
+Read file(s) matching the predicate from `tarball` and write to `out`.
+Return the [`Header`](@ref)s of the matchin files.
+
+If `predicate::Function` it should take a `Header` as the only input
+argument and return `true`/`false`.
+If `predicate::String` it is interpreted as a path relative the
+tarball root and must only match a single entry.
+
 ### Tar.list
 
 ```jl

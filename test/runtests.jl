@@ -601,6 +601,75 @@ end
     end
 end
 
+@testset "API: extract_file" begin
+    mktempdir() do dir
+        open(joinpath(dir, "file.txt"), "w") do io
+            write(io, "file at the root")
+        end
+        dir2 = mkdir(joinpath(dir, "directory"))
+        open(joinpath(dir2, "file2.txt"), "w") do io
+            write(io, "file in directory")
+        end
+        tarball = Tar.create(dir)
+
+        for tar in (()->tarball, ()->open(tarball))
+            ## predicate::String
+            io = IOBuffer()
+            for pred in ("file.txt", "./file.txt")
+                hdr = Tar.extract_file(pred, tar(), io)
+                @test hdr.path == "file.txt"
+                @test hdr.size == 16
+                @test String(take!(io)) == "file at the root"
+            end
+
+            for pred in ("directory/file2.txt", "./directory/file2.txt")
+                hdr = Tar.extract_file(pred, tar(), io)
+                @test hdr.path == "directory/file2.txt"
+                @test hdr.size == 17
+                @test String(take!(io)) == "file in directory"
+            end
+
+            @test_throws ArgumentError("no files in the tarball matches the filename nope") Tar.extract_file("nope", tar(), io)
+
+            # predicate::Function
+            hdrs = Tar.extract_file(tar(), io) do hdr
+                hdr.path == "file.txt"
+            end
+            @test length(hdrs) == 1
+            @test hdrs[1].path == "file.txt"
+            @test hdrs[1].size == 16
+            @test String(take!(io)) == "file at the root"
+
+            hdrs = Tar.extract_file(hdr -> true, tar(), io)
+            @test length(hdrs) == 2
+            str = String(take!(io))
+            @test occursin("file at the root", str)
+            @test occursin("file in directory", str)
+            @test sum(h.size for h in hdrs) == sizeof(str)
+
+            hdrs = Tar.extract_file(hdr -> true, tar(), io)
+            @test length(hdrs) == 2
+            str = String(take!(io))
+            @test occursin("file at the root", str)
+            @test occursin("file in directory", str)
+            @test sum(h.size for h in hdrs) == sizeof(str)
+
+            hdrs = Tar.extract_file(hdr -> false, tar(), io)
+            @test length(hdrs) == 0
+            @test sizeof(String(take!(io))) == 0
+
+            # Non-IO output
+            mktempdir() do tmpd
+                o = joinpath(tmpd, "out.data")
+                Tar.extract_file("file.txt", tar(), o)
+                @test read(o, String) == "file at the root"
+                Tar.extract_file(hdr -> hdr.path == "file.txt", tar(), o)
+                @test read(o, String) == "file at the root"
+            end
+        end
+    end
+end
+
 @testset "API: rewrite" begin
     # reference standard tarball
     reference, hash₁ = make_test_tarball()
