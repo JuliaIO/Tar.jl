@@ -743,16 +743,17 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing
         tarball, hash = make_test_tarball()
         mktempdir() do dir
             Tar.extract(tarball, dir)
-            f_path = joinpath("dir", "ffffffffff")
+            f_path = joinpath("dir", "0-ffffffff")
             @test isfile(f_path)
             @test !Sys.isexecutable(f_path)
 
-            x_path = joinpath("dir", "xxxxxxxxxx")
+            x_path = joinpath("dir", "0-xxxxxxxx")
             @test isfile(x_path)
             @test Sys.isexecutable(x_path)
             
             f_acl = readchomp(`icacls $(f_path)`)
             @test occursin("Everyone:(R,WA)", f_acl)
+            x_acl = readchomp(`icacls $(x_path)`)
             @test occursin("Everyone:(RX,WA)", x_acl)
         end
     end
