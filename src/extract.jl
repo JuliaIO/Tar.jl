@@ -73,7 +73,7 @@ function extract_tarball(
             copy_symlinks || symlink(hdr.link, sys_path)
         elseif hdr.type == :file
             read_data(tar, sys_path, size=hdr.size, buf=buf)
-            mode = filemode(sys_path)
+            mode = Sys.iswindows() ? hdr.mode : filemode(sys_path)
             if 0o100 & hdr.mode == 0
                 # turn off all execute bits
                 mode &= 0o666
