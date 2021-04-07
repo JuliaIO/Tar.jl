@@ -738,7 +738,7 @@ end
     foreach(rm, keys(tarballs))
 end
 
-if Sys.iswindows() && Sys.which("icacls") !== nothing
+if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
     @testset "windows permissions" begin
         tarball, hash = make_test_tarball()
         mktempdir() do dir
