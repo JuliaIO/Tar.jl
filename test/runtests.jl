@@ -743,11 +743,11 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing
         tarball, hash = make_test_tarball()
         mktempdir() do dir
             Tar.extract(tarball, dir)
-            f_path = joinpath("dir", "0-ffffffff")
+            f_path = joinpath(dir, "0-ffffffff")
             @test isfile(f_path)
             @test !Sys.isexecutable(f_path)
 
-            x_path = joinpath("dir", "0-xxxxxxxx")
+            x_path = joinpath(dir, "0-xxxxxxxx")
             @test isfile(x_path)
             @test Sys.isexecutable(x_path)
             
