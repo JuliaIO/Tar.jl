@@ -737,3 +737,23 @@ end
     # cleanup
     foreach(rm, keys(tarballs))
 end
+
+if Sys.iswindows() && Sys.which("icacls") !== nothing
+    @testset "windows permissions" begin
+        tarball, hash = make_test_tarball()
+        mktempdir() do dir
+            Tar.extract(tarball, dir)
+            f_path = joinpath("dir", "ffffffffff")
+            @test isfile(f_path)
+            @test !Sys.isexecutable(f_path)
+
+            x_path = joinpath("dir", "xxxxxxxxxx")
+            @test isfile(x_path)
+            @test Sys.isexecutable(x_path)
+            
+            f_acl = readchomp(`icacls $(f_path)`)
+            @test occursin("Everyone:(R,WA)", f_acl)
+            @test occursin("Everyone:(RX,WA)", x_acl)
+        end
+    end
+end
