@@ -411,29 +411,38 @@ tool.
 
 ### Permissions
 
-Upon tarball extraction, `Tar` respects the permissions recorded for each file.
-When creating tarball, however, it ignores most permission information and
-normalizes permissions as follows:
+When it comes to permissions, `Tar` records and restores only one significant
+bit of information: whether plain files are executable by their owner or not. No
+permission information is recorded or restored for directories or symlinks. This
+one bit of information is supported on most file systems and platforms, and is
+(not by coincidence) the only information that `git` records. This choice makes
+`Tar`'s behavior as portable as possible and means that it is safe to extract
+and use the contents of tarballs even if they were generated with unsafe
+permission combinations such as `0o777`, i.e. world writable and executable.
+Modes are normalized in the following manner for both creation and extraction:
 
-* files that are not executable by the owner are archived with mode `0o644`;
-* files that are executable by the owner are archived with mode `0o755`;
-* directories and symlinks are always archived with mode `0o755`.
+* files not executable by owner are archived/restored with mode `0o644`;
+* files executable by owner are archived/restored with mode `0o755`;
+* directories and symlinks are archived with mode `0o755`;
+* directories and symlinks are restored with default modes.
 
-In other words, `Tar` records only one significant bit of information: whether
-plain files are executable by their owner or not. No permission information for
-directories or symlinks is considered significant. This one bit of information
-is the only one which makes sense across all platforms, so this choice makes
-`Tar`'s behavior as portable as possible. On systems (like Windows) that do not
-use POSIX modes, whatever permission mechanism exists (_e.g._ ACLs) should be
-queried/modified to determine whether each file is executable by its owner or
-not. Unfortunately, this is currently broken on Windows since `libuv` does not
-correctly support querying or changing the user executable "bit"; this is
-actively being worked on, however, and should be fixed in future versions of
-Julia.
+When extracting tarball contents, `Tar` respects the system
+[umask](https://en.wikipedia.org/wiki/Umask) (or similar administrative
+permission limits on non-POSIX systems), so the exact permissions of extracted
+tree contents may be *less* permissive than the above but should never be more
+permissive. If you observe `Tar` extracting any tarball contents with more
+permissive modes than this, please file an issue.
 
-In the future, optional support may be added for recording exact permission
-modes on POSIX systems, and possibly for normalizing permissions on extraction
-in the same way that they are normalized upon archive creation.
+When using Julia versions prior to 1.6 on Windows, support for querying and
+setting the executable bit is broken, so all files are created as executable.
+Julia versions 1.6 and greater can correctly read and write executable
+permissions using Windows ACLs, so tarballs created and extracted on Windows
+should have apprpriate permissions.
+
+In the future, optional support may be added for recording or restoring exact
+permission modes to the extent that such permissions are supported on those
+systems. On non-POSIX systems, permissions will necessarily be an approximation
+of POSIX mode strings as supported by those systems.
 
 ### Reproducibility
 

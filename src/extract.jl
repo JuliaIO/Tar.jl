@@ -73,16 +73,18 @@ function extract_tarball(
             copy_symlinks || symlink(hdr.link, sys_path)
         elseif hdr.type == :file
             read_data(tar, sys_path, size=hdr.size, buf=buf)
-            mode = hdr.mode & filemode(sys_path)
-            if 0o100 & hdr.mode == 0
-                # turn off all execute bits
-                mode &= 0o666
-            else
+            exec = 0o100 & hdr.mode != 0
+            tar_mode = exec ? 0o755 : 0o644
+            sys_mode = filemode(sys_path)
+            if exec
                 # copy read bits to execute bits with
                 # at least the user execute bit on
-                mode |= 0o100 | (mode & 0o444) >> 2
+                sys_mode |= 0o100 | (sys_mode & 0o444) >> 2
+                # TODO: would be better to have the system
+                # create an executable with default mode but
+                # we don't have a way to do that afaik
             end
-            chmod(sys_path, mode)
+            chmod(sys_path, tar_mode & sys_mode)
         else # should already be caught by check_header
             error("unsupported tarball entry type: $(hdr.type)")
         end
