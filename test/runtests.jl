@@ -750,7 +750,7 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
             x_path = joinpath(dir, "0-xxxxxxxx")
             @test isfile(x_path)
             @test Sys.isexecutable(x_path)
-            
+
             f_acl = readchomp(`icacls $(f_path)`)
             @test occursin("Everyone:(R,WA)", f_acl)
             x_acl = readchomp(`icacls $(x_path)`)
