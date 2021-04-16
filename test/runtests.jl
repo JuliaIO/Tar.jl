@@ -452,13 +452,35 @@ end
     rm(dir, recursive=true)
     n = length(test_dir_paths)
 
-    # list([predicate,] tarball)
+    # list([callback,] tarball)
     arg_readers(tarball) do tar
         @arg_test tar begin
             headers = Tar.list(tar)
             @test test_dir_paths == [hdr.path for hdr in headers]
         end
         @arg_test tar @test n == tar_count(tar)
+        @arg_test tar begin
+            Tar.list(tar) do hdr
+                @test hdr isa Tar.Header
+            end :: Nothing
+        end
+        local data_pairs
+        @arg_test tar begin
+            Tar.list(tar) do hdr, data
+                @test hdr isa Tar.Header
+                @test data isa Vector{Pair{Symbol, String}}
+                data_pairs = data
+            end :: Nothing
+        end
+        local data_buffer
+        @arg_test tar begin
+            Tar.list(tar) do hdr, data::Vector{UInt8}
+                @test hdr isa Tar.Header
+                @test data isa Vector{UInt8}
+                data_buffer = data
+            end :: Nothing
+        end
+        @test join(map(last, data_pairs)) == String(data_buffer[1:500])
     end
 
     # add a sketchy entry to tarball
@@ -467,7 +489,7 @@ end
     end
     paths = push!(copy(test_dir_paths), "/bad")
 
-    # list([predicate,] tarball; strict=true|false)
+    # list([callback,] tarball; strict=true|false)
     arg_readers(tarball) do tar
         @arg_test tar @test_throws ErrorException Tar.list(tar)
         @arg_test tar @test_throws ErrorException Tar.list(tar, strict=true)

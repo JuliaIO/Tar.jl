@@ -38,7 +38,13 @@ function iterate_headers(
     @label loop
         hdr === nothing && break
         strict && check_header(hdr)
-        callback(hdr)
+        if hasmethod(callback, Tuple{Header, Vector{Pair{Symbol, String}}})
+            callback(hdr, dump_header(buf))
+        elseif hasmethod(callback, Tuple{Header, Vector{UInt8}})
+            callback(hdr, buf[1:512])
+        else
+            callback(hdr)
+        end
         if !skeleton || hdr.type in (:g, :x) ||
             hdr.path == "././@LongLink" && hdr.type in (:L, :K)
             skip_data(tar, hdr.size)
@@ -465,6 +471,35 @@ function read_extended_metadata(
     end
 end
 
+# For reference see
+# https://www.gnu.org/software/tar/manual/html_node/Standard.html
+
+const HEADER_FIELDS = [
+    # field, offset, size
+    (:name,       0, 100)
+    (:mode,     100,   8)
+    (:uid,      108,   8)
+    (:gid,      116,   8)
+    (:size,     124,  12)
+    (:mtime,    136,  12)
+    (:chksum,   148,   8)
+    (:typeflag, 156,   1)
+    (:linkname, 157, 100)
+    (:magic,    257,   6)
+    (:version,  263,   2)
+    (:uname,    265,  32)
+    (:gname,    297,  32)
+    (:devmajor, 329,   8)
+    (:devminor, 337,   8)
+    (:prefix,   345, 155)
+]
+
+index_range(offset::Int, length::Int) = offset .+ (1:length)
+
+dump_header(buf::AbstractVector{UInt8}) =
+    [ field => String(buf[index_range(offset, size)])
+        for (field, offset, size) in HEADER_FIELDS ]
+
 function read_standard_header(
     io::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
@@ -493,10 +528,12 @@ function read_standard_header(
     version = read_header_str(header_view, 263, 2)
     prefix  = read_header_str(header_view, 345, 155)
     # check various fields
+    chksum_orig = header_view[index_range(148, 8)]
     header_view[index_range(148, 8)] .= ' ' # fill checksum field with spaces
     buf_sum = sum(header_view)
     chksum == buf_sum ||
         error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(header_view)))")
+    header_view[index_range(148, 8)] .= chksum_orig
     occursin(r"^0* *$", version) ||
         error("unknown version string for tar file: $(repr(version))")
     path = isempty(prefix) ? name : "$prefix/$name"
@@ -509,8 +546,6 @@ function skip_data(tar::IO, size::Integer)
     size < 0 && throw(ArgumentError("[internal error] negative skip: $size"))
     size > 0 && skip(tar, round_up(size))
 end
-
-index_range(offset::Int, length::Int) = offset .+ (1:length)
 
 read_header_chr(buf::AbstractVector{UInt8}, offset::Int) = Char(buf[offset+1])
 
