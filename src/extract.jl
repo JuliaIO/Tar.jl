@@ -15,7 +15,7 @@ function iterate_headers(
 )
     eof(tar) && return
     hdr = read_standard_header(tar, buf=buf)
-    hdr == nothing && return
+    hdr === nothing && return
     if !raw
         globals = Dict{String,String}()
     end
@@ -421,7 +421,7 @@ function read_header(
     path = get(metadata, "path", hdr.path)
     link = get(metadata, "linkpath", hdr.link)
     # construct and return Header object
-    return Header(path, hdr.type, hdr.mode, size, link)
+    return Header(hdr; path=path, size=size, link=link)
 end
 
 using Base.Checked: mul_with_overflow, add_with_overflow
