@@ -61,8 +61,9 @@ function make_test_tarball(tar_create::Function = Tar.create)
                 dir′ = joinpath(dir, "s"^b)
                 mkpath(dir′)
                 push!(paths, dir′)
+                path = paths[i += 1]
                 link = joinpath(dir, "l"^b)
-                target = relpath(paths[i += 1], link)
+                target = relpath(path, link)
                 symlink(target, link)
                 push!(paths, link)
                 broken = joinpath(dir, "b"^b)
@@ -70,6 +71,15 @@ function make_test_tarball(tar_create::Function = Tar.create)
                     symlink(chop(target), broken)
                     push!(paths, broken)
                 end
+                isfile(path) || continue
+                hard = joinpath(dir, "h"^b)
+                mode = isodd(i) ? 0o755 : 0o644
+                if Sys.which("ln") !== nothing
+                    run(`ln $path $hard`)
+                else
+                    cp(path, hard)
+                end
+                chmod(hard, mode)
             end
         end
     end

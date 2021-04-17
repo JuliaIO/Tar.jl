@@ -99,12 +99,18 @@ function check_header(hdr::Header)
         err("path is absolute")
     occursin(r"(^|/)\.\.(/|$)", hdr.path) &&
         err("path contains '..' component")
-    hdr.type in (:file, :symlink, :directory) ||
+    hdr.type in (:file, :hardlink, :symlink, :directory) ||
         err("unsupported entry type")
     hdr.type ∉ (:hardlink, :symlink) && !isempty(hdr.link) &&
         err("non-link with link path")
-    hdr.type == :symlink && hdr.size != 0 &&
-        err("symlink with non-zero size")
+    hdr.type ∈ (:hardlink, :symlink) && isempty(hdr.link) &&
+        err("$(hdr.type) with empty link path")
+    hdr.type ∈ (:hardlink, :symlink) && hdr.size != 0 &&
+        err("$(hdr.type) with non-zero size")
+    hdr.type == :hardlink && hdr.link[1] == '/' &&
+        err("hardlink with absolute link path")
+    hdr.type == :hardlink && occursin(r"(^|/)\.\.(/|$)", hdr.link) &&
+        err("hardlink contains '..' component")
     hdr.type == :directory && hdr.size != 0 &&
         err("directory with non-zero size")
     hdr.type != :directory && endswith(hdr.path, "/") &&

@@ -79,8 +79,16 @@ function extract_tarball(
             mkdir(sys_path)
         elseif hdr.type == :symlink
             copy_symlinks || symlink(hdr.link, sys_path)
+        elseif hdr.type == :hardlink
+            src_path = joinpath(root, hdr.link)
+            cp(src_path, sys_path)
         elseif hdr.type == :file
             read_data(tar, sys_path, size=hdr.size, buf=buf)
+        else # should already be caught by check_header
+            error("unsupported tarball entry type: $(hdr.type)")
+        end
+        # apply tarball permissions
+        if hdr.type in (:file, :hardlink)
             exec = 0o100 & hdr.mode != 0
             tar_mode = exec ? 0o755 : 0o644
             sys_mode = filemode(sys_path)
@@ -93,21 +101,19 @@ function extract_tarball(
                 # we don't have a way to do that afaik
             end
             chmod(sys_path, tar_mode & sys_mode)
-        else # should already be caught by check_header
-            error("unsupported tarball entry type: $(hdr.type)")
         end
     end
     copy_symlinks || return
 
     # resolve the internal targets of symlinks
     for (path, what) in paths
-        what isa AbstractString || continue
+        what isa String || continue
         target = link_target(paths, path, what)
         paths[path] = something(target, :symlink)
     end
 
     # follow chains of symlinks
-    follow(seen::Vector, what::Symbol) =
+    follow(seen::Vector, what::Any) =
         what == :symlink ? what : seen[end]
     follow(seen::Vector, what::String) =
         what in seen ? :symlink : follow(push!(seen, what), paths[what])
@@ -159,7 +165,7 @@ end
 
 # resolve symlink target or nothing if not valid
 function link_target(
-    paths::Dict{String,Union{String,Symbol}},
+    paths::Dict{String},
     path::AbstractString,
     link::AbstractString,
 )
@@ -220,12 +226,18 @@ function git_tree_hash(
                 node[name] = Dict{String,Any}()
             end
             return
-        end
-        if hdr.type == :symlink
+        elseif hdr.type == :symlink
             mode = "120000"
             hash = git_object_hash("blob", HashType) do io
                 write(io, hdr.link)
             end
+        elseif hdr.type == :hardlink
+            mode = iszero(hdr.mode & 0o100) ? "100644" : "100755"
+            node′ = tree
+            for part in split(hdr.link, '/')
+                node′ = node′[part]
+            end
+            hash = node′[2] # hash of linked file
         elseif hdr.type == :file
             mode = iszero(hdr.mode & 0o100) ? "100644" : "100755"
             hash = git_file_hash(tar, hdr.size, HashType, buf=buf)
@@ -332,31 +344,62 @@ function read_tarball(
 )
     write_skeleton_header(skeleton, buf=buf)
     # symbols for path types except symlinks store the link
-    paths = Dict{String,Union{Symbol,String}}()
+    paths = Dict{String,Any}()
     globals = Dict{String,String}()
     while !eof(tar)
         hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
         hdr === nothing && break
+        err = nothing
+        # normalize path and check for symlink attacks
+        path = ""
+        for part in split(hdr.path, '/')
+            # check_header checks for ".." later
+            (isempty(part) || part == ".") && continue
+            if err === nothing && get(paths, path, nothing) isa String
+                err = """
+                Tarball contains path with symlink prefix:
+                - path = $(repr(hdr.path))
+                - prefix = $(repr(path))
+                Refusing to extract — possible attack!
+                """
+            end
+            path = isempty(path) ? part : "$path/$part"
+        end
+        hdr′ = Header(hdr, path=path)
+        # check that hardlinks refer to already-seen files
+        if err === nothing && hdr.type == :hardlink
+            parts = filter!(split(hdr.link, '/')) do part
+                # check_header checks for ".." later
+                !isempty(part) && part != "."
+            end
+            link = join(parts, '/')
+            hdr = Header(hdr, link=link)
+            hdr′ = Header(hdr′, link=link)
+            what = get(paths, link, Symbol("non-existent"))
+            if what isa Integer # plain file
+                hdr′ = Header(hdr′, size=what)
+            else
+                err = """
+                Tarball contains hardlink with $what target:
+                - path = $(repr(hdr.path))
+                - target = $(repr(hdr.link))
+                Refusing to extract — possible attack!
+                """
+            end
+        end
         # check if we should extract or skip
-        if !predicate(hdr)
+        if !predicate(hdr′) # pass normalized header
             skip_data(tar, hdr.size)
             continue
         end
         check_header(hdr)
-        # normalize path and check for symlink attacks
-        path = ""
-        for part in split(hdr.path, '/')
-            (isempty(part) || part == ".") && continue
-            # check_header doesn't allow ".." in path
-            get(paths, path, nothing) isa String && error("""
-            Refusing to extract path with symlink prefix, possible attack
-             * path to extract: $(repr(hdr.path))
-             * symlink prefix: $(repr(path))
-            """)
-            isempty(path) || (paths[path] = :directory)
-            path = isempty(path) ? part : "$path/$part"
-        end
-        paths[path] = hdr.type == :symlink ? hdr.link : hdr.type
+        err === nothing || error(err)
+        # record info about path
+        paths[path] =
+            hdr.type == :symlink ? hdr.link :
+            hdr.type == :file    ? hdr.size :
+            hdr.type
+        # apply callback, checking that it consumes IO correctly
         before = applicable(position, tar) ? position(tar) : 0
         callback(hdr, split(path, '/', keepempty=false))
         applicable(position, tar) || continue
