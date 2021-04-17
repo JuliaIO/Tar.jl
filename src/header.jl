@@ -30,6 +30,17 @@ struct Header
     link::String
 end
 
+function Header(
+    hdr::Header;
+    path::AbstractString = hdr.path,
+    type::Symbol         = hdr.type,
+    mode::Integer        = hdr.mode,
+    size::Integer        = hdr.size,
+    link::AbstractString = hdr.link,
+)
+    Header(path, type, mode, size, link)
+end
+
 function Base.show(io::IO, hdr::Header)
     show(io, Header)
     print(io, "(")
