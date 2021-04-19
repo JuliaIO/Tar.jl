@@ -400,7 +400,7 @@ function read_header(
             break # non-extension header block
         end
         hdr = read_standard_header(io, buf=buf, tee=tee)
-        hdr === nothing && error("premature end of tar file")
+        hdr === nothing && throw(EOFError())
     end
     # determine final values for size, path & link
     size = hdr.size
@@ -555,7 +555,7 @@ function read_data(
         max_read_len = min(padded_size, length(buf))
         read_len = readbytes!(tar, buf, max_read_len)
         write(tee, view(buf, 1:read_len))
-        read_len < max_read_len && eof(tar) && error("premature end of tar file")
+        read_len < max_read_len && eof(tar) && throw(EOFError())
         size -= write(file, view(buf, 1:min(read_len, size)))
         padded_size -= read_len
     end
@@ -587,6 +587,6 @@ function read_data(
     length(buf) < n && resize!(buf, nextpow(2, n))
     r = readbytes!(tar, buf, n)
     write(tee, view(buf, 1:r))
-    r < n && error("premature end of tar file")
+    r < n && throw(EOFError())
     return view(buf, 1:size)
 end
