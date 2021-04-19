@@ -146,7 +146,7 @@ end
 @testset "truncated tarball" begin
     tarball, hash = make_test_tarball()
     open(tarball, "a") do io
-        truncate(io, div(filesize(tarball),2))
+        truncate(io, filesize(tarball) ÷ 2)
     end
 
     @testset "tree_hash" begin
