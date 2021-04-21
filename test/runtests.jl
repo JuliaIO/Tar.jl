@@ -188,6 +188,38 @@ if @isdefined(gtar)
     end
 end
 
+@testset "directory after contents" begin
+    # create and hash a reference tarball
+    tarball, io = mktemp()
+    # executable files: hashing works on Windows + old Julia version
+    Tar.write_header(io, Tar.Header("dir/file", :file, 0o755, 0, ""))
+    Tar.write_header(io, Tar.Header("file", :file, 0o755, 0, ""))
+    close(io)
+    hash = Tar.tree_hash(tarball)
+    rm(tarball)
+    # create a version with directory entries after contents
+    tarball, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :file, 0o755, 0, ""))
+    Tar.write_header(io, Tar.Header(".", :directory, 0o755, 0, ""))
+    Tar.write_header(io, Tar.Header("dir/file", :file, 0o755, 0, ""))
+    Tar.write_header(io, Tar.Header("dir", :directory, 0o755, 0, ""))
+    close(io)
+    # check extract
+    tree = Tar.extract(tarball)
+    check_tree_hash(hash, tree)
+    # check tree_hash
+    @test Tar.tree_hash(tarball) == hash
+    # check rewrite
+    tarball′ = Tar.rewrite(tarball)
+    @test Tar.list(tarball′) == [
+        Tar.Header("dir/file", :file, 0o755, 0, "")
+        Tar.Header("file", :file, 0o755, 0, "")
+    ]
+    # cleanup
+    rm(tarball′)
+    rm(tarball)
+end
+
 @testset "symlink attacks" begin
     # not dangerous but still not allowed
     tarball, io = mktemp()

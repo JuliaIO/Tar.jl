@@ -54,7 +54,9 @@ function rewrite_tarball(
             end
             node = node′
         end
-        node[name] = (hdr, position(old_tar))
+        if !(hdr.type == :directory && get(node, name, nothing) isa Dict)
+            node[name] = (hdr, position(old_tar))
+        end
         skip_data(old_tar, hdr.size)
     end
     write_tarball(new_tar, tree, buf=buf) do node, tar_path
