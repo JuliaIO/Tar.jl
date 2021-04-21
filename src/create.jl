@@ -64,7 +64,7 @@ function rewrite_tarball(
         else
             hdr, pos = node
             mode = hdr.type == :file && iszero(hdr.mode & 0o100) ? 0o644 : 0o755
-            hdr′ = Header(tar_path, hdr.type, mode, hdr.size, hdr.link)
+            hdr′ = Header(hdr; path=tar_path, mode=mode)
             data = hdr.type == :directory ? nothing : (old_tar, pos)
             return hdr′, data
         end
@@ -158,7 +158,7 @@ function write_header(
         w += write_extended_header(tar, extended, buf=buf)
     end
     # emit standard header
-    std_hdr = Header(hdr.path, hdr.type, hdr.mode, hdr.size, link)
+    std_hdr = Header(hdr; link=link)
     w += write_standard_header(tar, std_hdr, name=name, prefix=prefix, buf=buf)
 end
 
