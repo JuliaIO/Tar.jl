@@ -57,14 +57,16 @@ function extract_tarball(
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         # get the file system version of the path
         sys_path = reduce(joinpath, init=root, parts)
-        # delete anything that's there already
-        ispath(sys_path) && rm(sys_path, force=true, recursive=true)
         # ensure dirname(sys_path) is a directory
         dir = dirname(sys_path)
         st = stat(dir)
         if !isdir(st)
             ispath(st) && rm(dir, force=true, recursive=true)
             mkpath(dir)
+        else
+            st = lstat(sys_path)
+            hdr.type == :directory && isdir(st) && return # from callback
+            ispath(st) && rm(sys_path, force=true, recursive=true)
         end
         # create the path
         if hdr.type == :directory
@@ -206,7 +208,9 @@ function git_tree_hash(
             node = node′
         end
         if hdr.type == :directory
-            node[name] = Dict{String,Any}()
+            if !(get(node, name, nothing) isa Dict)
+                node[name] = Dict{String,Any}()
+            end
             return
         end
         if hdr.type == :symlink
