@@ -212,6 +212,7 @@ end
     # check rewrite
     tarball′ = Tar.rewrite(tarball)
     @test Tar.list(tarball′) == [
+        Tar.Header("dir", :directory, 0o755, 0, "")
         Tar.Header("dir/file", :file, 0o755, 0, "")
         Tar.Header("file", :file, 0o755, 0, "")
     ]

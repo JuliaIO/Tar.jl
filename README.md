@@ -293,14 +293,6 @@ and it still records user and group information, modification times and exact
 permissions. Coaxing command-line `tar` programs to omit this non-portable
 information and use a portable (and `git`-compatible sort order) is non-trivial.
 
-Another difference from command-line `tar`: non-empty directories are also
-omitted from the tarballs that `Tar` creates since no metadata is recorded about
-directories aside from the fact that they exist and the existence of non-empty
-directories is already implied by the fact that they contain something else. If,
-in the future, the ability to record metadata about directories is added,
-tarballs will record entries for non-empty directories with non-default
-metadata.
-
 On the extraction side of things, doing `Tar.extract(tarball, dir)` is roughly
 equivalent to the following commands:
 ```sh
@@ -471,6 +463,15 @@ will ignore those subdirectories, while `Tar` will not. Therefore, they will
 have the same `git` tree hash, but produce different tarballs. Two _identical_
 file trees will always produce identical tarballs, however, and that tarball
 should remain stable in future versions of the `Tar` package.
+
+**Note:** the canonical tarball format was [changed] slightly in the 1.10
+release of the package. Since that release, the canonical format _includes_ all
+directories in the canonical tarball format, whereas previously non-empty
+directories were omitted since their existence is implied by their contents. The
+absence of explicit directory entries in tarballs confused some external
+tooling, so it was deemed worth a small format change to avoid such problems.
+
+[changed]: https://github.com/JuliaIO/Tar.jl/pull/106
 
 The `tree_hash` function can be used to compute a git-style tree hash of the
 contents of a tarball (without needing to extract it). Moreover, two tarballs

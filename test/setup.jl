@@ -135,7 +135,7 @@ function make_test_dir(gen_skip::Bool=false)
     return dir
 end
 
-const test_dir_paths = ["dir/file", "empty", "file", "link"]
+const test_dir_paths = ["dir", "dir/file", "empty", "file", "link"]
 Sys.iswindows() && pop!(test_dir_paths)
 
 # uses Tar.list(callback, tarball) API
