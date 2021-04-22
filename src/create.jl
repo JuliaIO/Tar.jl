@@ -80,24 +80,26 @@ function write_tarball(
     tar_path::String = ".";
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    w = 0
     hdr, data = callback(sys_path, tar_path)
     if hdr.type == :directory
         data isa Union{Nothing, AbstractDict{<:AbstractString}} ||
             error("callback must return a dict of strings, got: $(repr(data))")
-        data !== nothing && for name in sort!(collect(keys(data)))
-            sys_path′ = data[name]
-            tar_path′ = tar_path == "." ? name : "$tar_path/$name"
-            w += write_tarball(callback, tar, sys_path′, tar_path′, buf=buf)
-        end
     else
         data isa Union{Nothing, AbstractString, IO, Tuple{IO,Integer}} ||
             error("callback must return nothing, string or IO, got: $(repr(data))")
     end
-    if hdr.type != :directory || w == 0
+    w = 0
+    if tar_path != "."
         w += write_tarball(tar, hdr, data, buf=buf)
     end
-    @assert w > 0
+    data isa AbstractDict && for name in sort!(collect(keys(data)))
+        sys_path′ = data[name]
+        tar_path′ = tar_path == "." ? name : "$tar_path/$name"
+        w += write_tarball(callback, tar, sys_path′, tar_path′, buf=buf)
+    end
+    if tar_path == "." && w == 0
+        w += write_tarball(tar, hdr, data, buf=buf)
+    end
     return w
 end
 
