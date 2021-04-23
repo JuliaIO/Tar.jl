@@ -15,6 +15,7 @@ function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
     while n > 0
         n -= readbytes!(io, skip_buffer, min(n, length(skip_buffer)))
     end
+    # TODO: our skip data should throw if there's not enough data
     return io
 end
 const skip_buffer = UInt8[]
