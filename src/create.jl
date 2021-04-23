@@ -285,7 +285,7 @@ function write_data(
     while size > 0
         b = min(size, length(buf))
         n = readbytes!(data, buf, b)
-        n < b && eof(data) && error("data file too small: $data")
+        n < b && eof(data) && throw(EOFError())
         w += write(tar, view(buf, 1:n))
         size -= n
         t -= n

@@ -143,16 +143,67 @@ end
     rm(tarball)
 end
 
-@testset "truncated tarball" begin
-    tarball, hash = make_test_tarball()
-    open(tarball, "a") do io
-        truncate(io, filesize(tarball) ÷ 2)
+@testset "truncated tarballs" begin
+    # make a simple tarball
+    len = 1234
+    pad = mod(-len, 512)
+    data = rand(UInt8, len)
+    tarball, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :file, 0o644, len, ""))
+    write(io, data)
+    write(io, fill(0x0, pad))
+    close(io)
+
+    @testset "tarball is well-formed" begin
+        @test Tar.list(tarball) == [Tar.Header("file", :file, 0o644, len, "")]
+        tmp = Tar.extract(tarball)
+        @test readdir(tmp) == ["file"]
+        @test read(joinpath(tmp, "file")) == data
+        rm(tmp, recursive=true)
+        tarball′ = Tar.rewrite(tarball)
+        @test read(tarball) == read(tarball′)
+        rm(tarball′)
     end
 
-    @testset "tree_hash" begin
-        # Ensure that this throws 
-        @test_throws EOFError Tar.tree_hash(tarball)
+    @testset "trailing padding truncated" begin
+        for p in [pad-1, pad÷2, 1, 0]
+            open(tarball, "a") do io
+                truncate(io, 512 + len + p)
+            end
+            @test_throws_broken EOFError Tar.list(tarball)
+            @test_throws EOFError Tar.extract(tarball)
+            @test_throws EOFError Tar.tree_hash(tarball)
+            @test_throws_broken EOFError Tar.rewrite(tarball)
+        end
     end
+
+    @testset "file data truncated" begin
+        for d in [len÷2, 512, 0]
+            open(tarball, "a") do io
+                truncate(io, 512 + d)
+            end
+            @test_throws_broken EOFError Tar.list(tarball)
+            @test_throws EOFError Tar.extract(tarball)
+            @test_throws EOFError Tar.tree_hash(tarball)
+            @test_throws EOFError Tar.rewrite(tarball)
+        end
+    end
+
+    VERSION ≥ v"1.4" && # no EOFError due to 1.3 bug
+    @testset "header truncated" begin
+        for h in [511, 256, 1]
+            open(tarball, "a") do io
+                truncate(io, h)
+            end
+            @test_throws EOFError Tar.list(tarball)
+            @test_throws EOFError Tar.extract(tarball)
+            @test_throws EOFError Tar.tree_hash(tarball)
+            @test_throws EOFError Tar.rewrite(tarball)
+        end
+    end
+
+    # cleanup
+    rm(tarball)
 end
 
 if @isdefined(gtar)

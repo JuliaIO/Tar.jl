@@ -17,6 +17,10 @@ if NON_STDLIB_TESTS
     end
 end
 
+macro test_throws_broken(E, expr)
+    :(@test_broken try $(esc(expr)) catch err err end isa $(esc(E)))
+end
+
 tree_hash(path::AbstractString) = bytes2hex(GitTools.tree_hash(path))
 
 function gen_file(file::String, size::Int)
