@@ -175,6 +175,13 @@ is encountered while extracting `tarball` and the entry is only extracted if the
 an archive, to skip entries that cause `extract` to throw an error, or to record
 what is extracted during the extraction process.
 
+Before it is passed to the predicate function, the `Header` object is somewhat
+modified from the raw header in the tarball: the `path` field is normalized to
+remove `.` entries and replace multiple consecutive slashes with a single slash.
+If the entry has type `:hardlink`, the link target path is normalized the same
+way so that it will match the path of the target entry; the size field is set to
+the size of the target path (which must be an already-seen file).
+
 If the `skeleton` keyword is passed then a "skeleton" of the extracted tarball
 is written to the file or IO handle given. This skeleton file can be used to
 recreate an identical tarball by passing the `skeleton` keyword to the `create`
@@ -251,6 +258,13 @@ is encountered while extracting `old_tarball` and the entry is skipped unless
 `predicate(hdr)` is true. This can be used to selectively rewrite only parts of
 an archive, to skip entries that would cause `extract` to throw an error, or to
 record what content is encountered during the rewrite process.
+
+Before it is passed to the predicate function, the `Header` object is somewhat
+modified from the raw header in the tarball: the `path` field is normalized to
+remove `.` entries and replace multiple consecutive slashes with a single slash.
+If the entry has type `:hardlink`, the link target path is normalized the same
+way so that it will match the path of the target entry; the size field is set to
+the size of the target path (which must be an already-seen file).
 """
 function rewrite(
     predicate::Function,
@@ -300,6 +314,13 @@ is encountered while processing `tarball` and an entry is only hashed if
 `predicate(hdr)` is true. This can be used to selectively hash only parts of an
 archive, to skip entries that cause `extract` to throw an error, or to record
 what is extracted during the hashing process.
+
+Before it is passed to the predicate function, the `Header` object is somewhat
+modified from the raw header in the tarball: the `path` field is normalized to
+remove `.` entries and replace multiple consecutive slashes with a single slash.
+If the entry has type `:hardlink`, the link target path is normalized the same
+way so that it will match the path of the target entry; the size field is set to
+the size of the target path (which must be an already-seen file).
 
 Currently supported values for `algorithm` are `git-sha1` (the default) and
 `git-sha256`, which uses the same basic algorithm as `git-sha1` but replaces the

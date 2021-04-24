@@ -85,6 +85,13 @@ is encountered while extracting `tarball` and the entry is only extracted if the
 an archive, to skip entries that cause `extract` to throw an error, or to record
 what is extracted during the extraction process.
 
+Before it is passed to the predicate function, the `Header` object is somewhat
+modified from the raw header in the tarball: the `path` field is normalized to
+remove `.` entries and replace multiple consecutive slashes with a single slash.
+If the entry has type `:hardlink`, the link target path is normalized the same
+way so that it will match the path of the target entry; the size field is set to
+the size of the target path (which must be an already-seen file).
+
 If the `skeleton` keyword is passed then a "skeleton" of the extracted tarball
 is written to the file or IO handle given. This skeleton file can be used to
 recreate an identical tarball by passing the `skeleton` keyword to the `create`
@@ -156,6 +163,13 @@ is encountered while extracting `old_tarball` and the entry is skipped unless
 an archive, to skip entries that would cause `extract` to throw an error, or to
 record what content is encountered during the rewrite process.
 
+Before it is passed to the predicate function, the `Header` object is somewhat
+modified from the raw header in the tarball: the `path` field is normalized to
+remove `.` entries and replace multiple consecutive slashes with a single slash.
+If the entry has type `:hardlink`, the link target path is normalized the same
+way so that it will match the path of the target entry; the size field is set to
+the size of the target path (which must be an already-seen file).
+
 ### Tar.tree_hash
 
 ```jl
@@ -186,6 +200,13 @@ is encountered while processing `tarball` and an entry is only hashed if
 `predicate(hdr)` is true. This can be used to selectively hash only parts of an
 archive, to skip entries that cause `extract` to throw an error, or to record
 what is extracted during the hashing process.
+
+Before it is passed to the predicate function, the `Header` object is somewhat
+modified from the raw header in the tarball: the `path` field is normalized to
+remove `.` entries and replace multiple consecutive slashes with a single slash.
+If the entry has type `:hardlink`, the link target path is normalized the same
+way so that it will match the path of the target entry; the size field is set to
+the size of the target path (which must be an already-seen file).
 
 Currently supported values for `algorithm` are `git-sha1` (the default) and
 `git-sha256`, which uses the same basic algorithm as `git-sha1` but replaces the
@@ -362,17 +383,15 @@ supports only the following file types:
 * plain files
 * directories
 * symlinks
+* hardlinks (extracted as copies)
 
 The `Tar` package does not support other file types that the TAR format can
-represent, including: hard links, character devices, block devices, and FIFOs.
-If you attempt to create or extract an archive that contains any of these kinds
-of entries, `Tar` will raise an error. You can, however, list the contents of a
+represent, including: character devices, block devices, and FIFOs. If you
+attempt to create or extract an archive that contains any of these kinds of
+entries, `Tar` will raise an error. You can, however, list the contents of a
 tarball containing other kinds of entries by passing the `strict=false` flag to
 the `list` function; without this option, `list` raises the same error as
 `extract` would.
-
-In the future, optional support may be added for using hard links within
-archives to avoid duplicating identical files.
 
 ### Time Stamps
 
