@@ -539,6 +539,7 @@ const HEADER_FIELDS = [
     (:devmajor, 329,   8)
     (:devminor, 337,   8)
     (:prefix,   345, 155)
+    (:rest,     500,  12)
 ]
 
 index_range(offset::Int, length::Int) = offset .+ (1:length)
