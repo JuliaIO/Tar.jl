@@ -564,7 +564,7 @@ end
                 data_buffer = data
             end :: Nothing
         end
-        @test join(map(last, data_pairs)) == String(data_buffer[1:500])
+        @test join(map(last, data_pairs)) == String(data_buffer)
     end
 
     # add a sketchy entry to tarball
