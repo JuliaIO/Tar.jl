@@ -1,11 +1,5 @@
 import SHA
 
-@static if VERSION < v"1.4.0-DEV"
-    view_read!(io, buf::SubArray{UInt8}) = readbytes!(io, buf, sizeof(buf))
-else
-    view_read!(io, buf::SubArray{UInt8}) = read!(io, buf)
-end
-
 function iterate_headers(
     callback::Function,
     tar::IO;
@@ -281,10 +275,10 @@ function git_file_hash(
     # where you write data to an IO object and it maintains a hash
     padded_size = round_up(size)
     while padded_size > 0
-        max_read_len = min(padded_size, length(buf))
+        max_read_len = Int(min(padded_size, length(buf)))
         read_len = readbytes!(tar, buf, max_read_len)
         read_len < max_read_len && eof(tar) && throw(EOFError())
-        nonpadded_view = view(buf, 1:min(read_len, size))
+        nonpadded_view = view(buf, 1:Int(min(read_len, size)))
         SHA.update!(ctx, nonpadded_view)
         size -= length(nonpadded_view)
         padded_size -= read_len
@@ -382,7 +376,7 @@ function read_header(
     metadata = copy(globals)
     while true
         if hdr.type in (:g, :x) # POSIX extended headers
-            let hdr=hdr         #15276
+            let hdr=hdr         # https://github.com/JuliaLang/julia/issues/15276
                 read_extended_metadata(io, hdr.size, buf=buf, tee=tee) do key, val
                     if key in ("size", "path", "linkpath")
                         if hdr.type == :g
@@ -429,6 +423,9 @@ function read_extended_metadata(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
 )
+    size > typemax(Int32) &&
+        error("read_extended_metadata called with too large size: $size")
+    size = Int(size)
     data = read_data(io, size=size, buf=buf, tee=tee)
     malformed() = error("malformed extended header metadata: $(repr(String(data)))")
     i = 0
@@ -472,9 +469,7 @@ function read_standard_header(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
 )
-    header_view = view(buf, 1:512)
-    view_read!(io, header_view)
-    write(tee, header_view)
+    header_view = read_data(io, size=512, buf=buf, tee=tee)
     if all(iszero, header_view)
         if tee !== devnull
             while !eof(io)
@@ -556,11 +551,11 @@ function read_data(
 )::Nothing
     padded_size = round_up(size)
     while padded_size > 0
-        max_read_len = min(padded_size, length(buf))
+        max_read_len = Int(min(padded_size, length(buf)))
         read_len = readbytes!(tar, buf, max_read_len)
         write(tee, view(buf, 1:read_len))
         read_len < max_read_len && eof(tar) && throw(EOFError())
-        size -= write(file, view(buf, 1:min(read_len, size)))
+        size -= write(file, view(buf, 1:Int(min(read_len, size))))
         padded_size -= read_len
     end
     @assert size == padded_size == 0
@@ -587,10 +582,11 @@ function read_data(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
 )::AbstractVector{UInt8}
-    n = round_up(size)
-    length(buf) < n && resize!(buf, nextpow(2, n))
-    r = readbytes!(tar, buf, n)
-    write(tee, view(buf, 1:r))
-    r < n && throw(EOFError())
+    padded_size = round_up(size)
+    padded_size > typemax(Int32) &&
+        throw(ArgumentError("read_data(tar; size) called with too large size: $size"))
+    padded_size = Int(padded_size)
+    length(buf) < padded_size && resize!(buf, nextpow(2, padded_size))
+    write(tee, read!(tar, view(buf, 1:padded_size)))
     return view(buf, 1:size)
 end
