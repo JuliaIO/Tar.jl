@@ -20,6 +20,19 @@ function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
 end
 const skip_buffer = UInt8[]
 
+# method for this exists in Base since Julia 1.4 but not before
+!hasmethod(read!, Tuple{IO, AbstractArray}) &&
+function Base.read!(s::IO, a::AbstractArray{T}) where T
+    if isbitstype(T) && (a isa Array || a isa Base.FastContiguousSubArray{T,<:Any,<:Array{T}})
+        GC.@preserve a unsafe_read(s, pointer(a), sizeof(a))
+    else
+        for i in eachindex(a)
+            a[i] = read(s, T)
+        end
+    end
+    return a
+end
+
 function can_symlink(dir::AbstractString)
     # guaranteed to be an empty directory
     link_path = joinpath(dir, "link")

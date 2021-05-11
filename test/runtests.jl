@@ -189,7 +189,6 @@ end
         end
     end
 
-    VERSION ≥ v"1.4" && # no EOFError due to 1.3 bug
     @testset "header truncated" begin
         for h in [511, 256, 1]
             open(tarball, "a") do io
