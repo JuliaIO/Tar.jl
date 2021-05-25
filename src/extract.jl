@@ -53,6 +53,7 @@ function extract_tarball(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     skeleton::IO = devnull,
     copy_symlinks::Bool = false,
+    same_permissions::Bool = true,
 )
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         # get the file system version of the path
@@ -82,7 +83,7 @@ function extract_tarball(
             error("unsupported tarball entry type: $(hdr.type)")
         end
         # apply tarball permissions
-        if hdr.type in (:file, :hardlink)
+        if same_permissions && hdr.type in (:file, :hardlink)
             exec = 0o100 & hdr.mode != 0
             tar_mode = exec ? 0o755 : 0o644
             sys_mode = filemode(sys_path)
@@ -139,7 +140,7 @@ function extract_tarball(
                 src = reduce(joinpath, init=root, split(what, '/'))
                 dst = reduce(joinpath, init=root, split(path, '/'))
                 cp(src, dst)
-                if Sys.iswindows()
+                if same_permissions && Sys.iswindows()
                     # our `cp` doesn't copy ACL properties, so manually set them via `chmod`
                     function copy_mode(src::String, dst::String)
                         chmod(dst, filemode(src))
