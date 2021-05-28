@@ -861,5 +861,14 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
             x_acl = readchomp(`icacls $(x_path)`)
             @test occursin("Everyone:(RX,WA)", x_acl)
         end
+
+        mktempdir() do dir
+            Tar.extract(tarball, dir, set_permissions=false)
+            f_path = joinpath(dir, "0-ffffffff")
+            @test isfile(f_path)
+
+            x_path = joinpath(dir, "0-xxxxxxxx")
+            @test isfile(x_path)
+        end
     end
 end
