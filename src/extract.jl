@@ -471,11 +471,9 @@ function read_standard_header(
 )
     header_view = read_data(io, size=512, buf=buf, tee=tee)
     if all(iszero, header_view)
-        if tee !== devnull
-            while !eof(io)
-                r = readbytes!(io, buf)
-                write(tee, view(buf, 1:r))
-            end
+        while !eof(io)
+            r = readbytes!(io, buf)
+            write(tee, view(buf, 1:r))
         end
         return nothing
     end
