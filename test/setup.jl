@@ -196,3 +196,49 @@ function ChaosBufferStream(input::IO; chunksizes = 1024:2048, sleepamnts = 1e-3:
     end
     return output
 end
+
+function write_modified_header(
+    data::Vector{Pair{Symbol, String}},
+    pairs::Pair{Symbol, String}...
+)
+    replacements = Dict(pairs)
+    fix_chksum = :chksum ∉ keys(replacements)
+    buf = IOBuffer()
+    chksum = 8*Int(' ')
+    for (field, value) in data
+        val = pop!(replacements, field, value)
+        pad = ncodeunits(value) - ncodeunits(val)
+        pad ≥ 0 || error("[test error] $field replacement too long: $repr(val)")
+        val *= "\0"^pad
+        write(buf, val)
+        field == :chksum && continue
+        for byte in codeunits(val)
+            chksum += byte
+        end
+    end
+    isempty(replacements) ||
+        error("[test error] fields not found: $(keys(replacements))")
+    data = take!(buf)
+    @assert length(data) == 512
+    if fix_chksum
+        chksum_str = string(chksum, base=8, pad=6) * "\0 "
+        data[Tar.index_range(:chksum)] .= codeunits(chksum_str)
+    end
+    path, io = mktemp()
+    write(io, data)
+    close(io)
+    return path
+end
+
+function test_error_prefix(f::Function, prefix::AbstractString)
+    val = try
+        f()
+        nothing
+    catch err
+        err
+    end
+    @test val isa Exception
+    @test startswith(val.msg, prefix)
+end
+
+const test_data_dir = joinpath(@__DIR__, "data")
