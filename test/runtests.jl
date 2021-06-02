@@ -867,3 +867,11 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
         end
     end
 end
+
+@testset "leading spaces" begin
+    # fragment of https://sparse.tamu.edu/MM/Oberwolfach/LF10.tar.gz
+    tarball = joinpath(@__DIR__, "data", "LF10-fragment.tar")
+    @test Tar.list(tarball) == [
+        Tar.Header("LF10/LF10_B.mtx", :file, 0o100600, 367, "")
+    ]
+end
