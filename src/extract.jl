@@ -518,32 +518,53 @@ end
 # For reference see
 # https://www.gnu.org/software/tar/manual/html_node/Standard.html
 
-const HEADER_FIELDS = [
+const HEADER_FIELDS = (
     # field, offset, size
-    (:name,       0, 100)
-    (:mode,     100,   8)
-    (:uid,      108,   8)
-    (:gid,      116,   8)
-    (:size,     124,  12)
-    (:mtime,    136,  12)
-    (:chksum,   148,   8)
-    (:typeflag, 156,   1)
-    (:linkname, 157, 100)
-    (:magic,    257,   6)
-    (:version,  263,   2)
-    (:uname,    265,  32)
-    (:gname,    297,  32)
-    (:devmajor, 329,   8)
-    (:devminor, 337,   8)
-    (:prefix,   345, 155)
-    (:rest,     500,  12)
-]
+    (:name,       0, 100),
+    (:mode,     100,   8),
+    (:uid,      108,   8),
+    (:gid,      116,   8),
+    (:size,     124,  12),
+    (:mtime,    136,  12),
+    (:chksum,   148,   8),
+    (:typeflag, 156,   1),
+    (:linkname, 157, 100),
+    (:magic,    257,   6),
+    (:version,  263,   2),
+    (:uname,    265,  32),
+    (:gname,    297,  32),
+    (:devmajor, 329,   8),
+    (:devminor, 337,   8),
+    (:prefix,   345, 155),
+    (:rest,     500,  12),
+)
 
-index_range(offset::Int, length::Int) = offset .+ (1:length)
+function index_range(field::Symbol)
+    for (fld, off, len) in HEADER_FIELDS
+        fld == field && return off .+ (1:len)
+    end
+    error("[internal error] invalid field name: $field")
+end
 
 dump_header(buf::AbstractVector{UInt8}) =
-    [ field => String(buf[index_range(offset, size)])
-        for (field, offset, size) in HEADER_FIELDS ]
+    [ fld => String(buf[off .+ (1:len)])
+        for (fld, off, len) in HEADER_FIELDS ]
+
+function header_error(buf::AbstractVector{UInt8}, msg::AbstractString)
+    sprint() do io
+        println(io, msg, "\n[header block data]:")
+        for (field, value) in dump_header(buf)
+            print(io, "  ", rpad(field, 8), " = ")
+            show(io, value)
+            println(io)
+        end
+    end |> error
+end
+
+function header_error(buf::AbstractVector{UInt8}, fld::Symbol)
+    value = read_header_str(buf, fld)
+    header_error(buf, "malformed $fld field: $(repr(value))")
+end
 
 function read_standard_header(
     io::IO;
@@ -551,6 +572,7 @@ function read_standard_header(
     tee::IO = devnull,
 )
     data = read_data(io, size=512, buf=buf, tee=tee)
+    # zero block indicates end of tarball
     if all(iszero, data)
         while !eof(io)
             r = readbytes!(io, buf)
@@ -558,40 +580,69 @@ function read_standard_header(
         end
         return nothing
     end
-    name    = read_header_str(data,   0, 100)
-    mode    = read_header_int(data, 100,   8)
-    size    = data[124+1] & 0x80 == 0 ?
-              read_header_int(data, 124,  12) :
-              read_header_bin(data, 124,  12)
-    chksum  = read_header_int(data, 148,   8)
-    type    = read_header_chr(data, 156)
-    link    = read_header_str(data, 157, 100)
-    version = read_header_str(data, 263,   2)
-    prefix  = read_header_str(data, 345, 155)
-    # check various fields
-    chksum_orig = data[index_range(148, 8)]
-    data[index_range(148, 8)] .= ' ' # fill checksum field with spaces
-    buf_sum = sum(data)
-    chksum == buf_sum ||
-        error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(data)))")
-    data[index_range(148, 8)] .= chksum_orig
-    occursin(r"^0* *$", version) ||
-        error("unknown version string for tar file: $(repr(version))")
+    # verify valid header
+    try
+        check_version_field(buf)
+        check_checksum_field(buf)
+    catch err
+        if err isa ErrorException
+            msg = match(r"^(.*?)\s*\[header block data\]"s, err.msg).captures[1]
+            msg = "This does not appear to be a TAR file/stream — $msg. Note: Tar.jl does not handle decompression; if the tarball is compressed you must use an external command like `gzcat` or package like CodecZlib.jl to decompress it. See the README file for examples."
+            err = ErrorException(msg)
+        end
+        rethrow(err)
+    end
+    # extract fields we care about
+    size = read_header_size(buf)
+    name = read_header_str(buf, :name)
+    mode = read_header_int(buf, :mode)
+    type = read_header_chr(buf, :typeflag)
+    link = read_header_str(buf, :linkname)
+    prefix = read_header_str(buf, :prefix)
+    # check that mode isn't too big
+    mode ≤ typemax(typemax(UInt16)) ||
+        header_error(buf, "mode value too large: $(string(mode, base=8))")
+    # combine prefix & name fields
     path = isempty(prefix) ? name : "$prefix/$name"
     return Header(path, to_symbolic_type(type), mode, size, link)
 end
 
-round_up(size) = 512 * ((size + 511) ÷ 512)
-
-function skip_data(tar::IO, size::Integer)
-    size < 0 && throw(ArgumentError("[internal error] negative skip: $size"))
-    size > 0 && skip(tar, round_up(size))
+function check_version_field(buf::AbstractVector{UInt8})
+    version = read_header_str(buf, :version)
+    occursin(r"^0* *$", version) && return
+    header_error(buf, "invalid version string for tar file: $(repr(version))")
 end
 
-read_header_chr(buf::AbstractVector{UInt8}, offset::Int) = Char(buf[offset+1])
+function check_checksum_field(buf::AbstractVector{UInt8})
+    chksum = read_header_int(buf, :chksum)
+    actual = let r = index_range(:chksum)
+        sum(i in r ? UInt8(' ') : buf[i] for i = 1:512)
+    end
+    chksum == actual && return
+    header_error(buf, "incorrect header checksum = $chksum; should be $actual")
+end
 
-function read_header_str(buf::AbstractVector{UInt8}, offset::Int, length::Int)
-    r = index_range(offset, length)
+function read_header_size(buf::AbstractVector{UInt8})
+    r = index_range(:size)
+    b1 = buf[r[1]]
+    b1 & 0x80 == 0 && return read_header_int(buf, :size)
+    # high bit set for binary
+    buf[r[1]] &= ~0x80
+    n = try read_header_bin(buf, :size)
+    finally
+        buf[r[1]] = b1
+    end
+    return n
+end
+
+function read_header_chr(buf::AbstractVector{UInt8}, fld::Symbol)
+    r = index_range(fld)
+    length(r) == 1 || error("[internal error] not a character field: $fld")
+    return Char(buf[first(r)])
+end
+
+function read_header_str(buf::AbstractVector{UInt8}, fld::Symbol)
+    r = index_range(fld)
     for i in r
         byte = buf[i]
         byte == 0 && return String(buf[first(r):i-1])
@@ -599,31 +650,46 @@ function read_header_str(buf::AbstractVector{UInt8}, offset::Int, length::Int)
     return String(buf[r])
 end
 
-function read_header_int(buf::AbstractVector{UInt8}, offset::Int, length::Int)
-    n = UInt64(0)
+function read_header_int(buf::AbstractVector{UInt8}, fld::Symbol)
+    r = index_range(fld)
+    n = Int64(0)
     before = true
-    r = index_range(offset, length)
     for i in r
         byte = buf[i]
         before && byte == UInt8(' ') && continue
         byte in (0x00, UInt8(' ')) && break
-        UInt8('0') <= byte <= UInt8('7') ||
-            error("invalid octal digit: $(repr(Char(byte)))")
+        UInt8('0') <= byte <= UInt8('7') || header_error(buf, fld)
+        if leading_zeros(n) <= 3
+            val = String(buf[r])
+            header_error(buf, "octal integer $fld value too large: $(repr(val))")
+        end
         n <<= 3
         n |= byte - 0x30
         before = false
     end
-    before && error("invalid integer value: $(repr(String(buf[r])))")
+    before && header_error(buf, fld)
     return n
 end
 
-function read_header_bin(buf::AbstractVector{UInt8}, offset::Int, length::Int)
-    n = UInt64(0)
-    for i in index_range(offset, length)
+function read_header_bin(buf::AbstractVector{UInt8}, fld::Symbol)
+    r = index_range(fld)
+    n = Int64(0)
+    for i in r
+        if leading_zeros(n) <= 8
+            val = String(buf[r])
+            header_error(buf, "binary integer $fld value too large: $(repr(val))")
+        end
         n <<= 8
         n |= buf[i]
     end
     return n
+end
+
+round_up(size) = 512 * ((size + 511) ÷ 512)
+
+function skip_data(tar::IO, size::Integer)
+    size < 0 && throw(ArgumentError("[internal error] negative skip: $size"))
+    size > 0 && skip(tar, round_up(size))
 end
 
 function read_data(
