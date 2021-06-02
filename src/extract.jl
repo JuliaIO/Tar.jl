@@ -520,14 +520,19 @@ end
 
 function read_header_int(buf::AbstractVector{UInt8}, offset::Int, length::Int)
     n = UInt64(0)
-    for i in index_range(offset, length)
+    before = true
+    r = index_range(offset, length)
+    for i in r
         byte = buf[i]
+        before && byte == UInt8(' ') && continue
         byte in (0x00, UInt8(' ')) && break
         UInt8('0') <= byte <= UInt8('7') ||
             error("invalid octal digit: $(repr(Char(byte)))")
         n <<= 3
         n |= byte - 0x30
+        before = false
     end
+    before && error("invalid integer value: $(repr(String(buf[r])))")
     return n
 end
 
