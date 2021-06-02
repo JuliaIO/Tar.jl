@@ -120,7 +120,9 @@ function make_test_dir(gen_skip::Bool=false)
     fpath = joinpath(dir, "dir", "file")
     touch(fpath)
     open(fpath, write=true) do io
-        write(io, rand(UInt8, 1000))
+        for i = 1:1000
+            write(io, i % UInt8)
+        end
     end
     mkdir(joinpath(dir, "empty"))
     if gen_skip
