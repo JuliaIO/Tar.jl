@@ -618,6 +618,7 @@ end
                 file = tempname()
                 touch(file)
                 @test_throws ErrorException Tar.extract(tar, file)
+                read(tar) # consume the rest
                 rm(file)
             end
             # extract(tarball, dir) — non-empty directory (error)
@@ -625,6 +626,7 @@ end
                 dir = mktempdir()
                 touch(joinpath(dir, "file"))
                 @test_throws ErrorException Tar.extract(tar, dir)
+                read(tar) # consume the rest
                 rm(dir, recursive=true)
             end
         end
@@ -693,6 +695,7 @@ end
                 file = tempname()
                 touch(file)
                 @test_throws ErrorException Tar.extract(predicate, tar, file)
+                read(tar) # consume the rest
                 rm(file)
             end
             # extract(predicate, tarball, dir) — non-empty directory (error)
@@ -700,6 +703,7 @@ end
                 dir = mktempdir()
                 touch(joinpath(dir, "file"))
                 @test_throws ErrorException Tar.extract(predicate, tar, dir)
+                read(tar) # consume the rest
                 rm(dir, recursive=true)
             end
         end
