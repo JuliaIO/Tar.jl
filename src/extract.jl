@@ -469,29 +469,29 @@ function read_standard_header(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
 )
-    header_view = read_data(io, size=512, buf=buf, tee=tee)
-    if all(iszero, header_view)
+    data = read_data(io, size=512, buf=buf, tee=tee)
+    if all(iszero, data)
         while !eof(io)
             r = readbytes!(io, buf)
             write(tee, view(buf, 1:r))
         end
         return nothing
     end
-    name    = read_header_str(header_view, 0, 100)
-    mode    = read_header_int(header_view, 100, 8)
-    size    = header_view[124+1] & 0x80 == 0 ?
-              read_header_int(header_view, 124, 12) :
-              read_header_bin(header_view, 124, 12)
-    chksum  = read_header_int(header_view, 148, 8)
-    type    = read_header_chr(header_view, 156)
-    link    = read_header_str(header_view, 157, 100)
-    version = read_header_str(header_view, 263, 2)
-    prefix  = read_header_str(header_view, 345, 155)
+    name    = read_header_str(data,   0, 100)
+    mode    = read_header_int(data, 100,   8)
+    size    = data[124+1] & 0x80 == 0 ?
+              read_header_int(data, 124,  12) :
+              read_header_bin(data, 124,  12)
+    chksum  = read_header_int(data, 148,   8)
+    type    = read_header_chr(data, 156)
+    link    = read_header_str(data, 157, 100)
+    version = read_header_str(data, 263,   2)
+    prefix  = read_header_str(data, 345, 155)
     # check various fields
-    header_view[index_range(148, 8)] .= ' ' # fill checksum field with spaces
-    buf_sum = sum(header_view)
+    data[index_range(148, 8)] .= ' ' # fill checksum field with spaces
+    buf_sum = sum(data)
     chksum == buf_sum ||
-        error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(header_view)))")
+        error("incorrect header checksum = $chksum; should be $buf_sum\n$(repr(String(data)))")
     occursin(r"^0* *$", version) ||
         error("unknown version string for tar file: $(repr(version))")
     path = isempty(prefix) ? name : "$prefix/$name"
