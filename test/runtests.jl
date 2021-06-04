@@ -867,3 +867,102 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
         end
     end
 end
+
+@testset "header parsing" begin
+    @testset "leading spaces in integer fields" begin
+        # fragment of https://sparse.tamu.edu/MM/Oberwolfach/LF10.tar.gz
+        tarball = joinpath(test_data_dir, "LF10-fragment.tar")
+        hdr = Tar.Header("LF10/LF10_B.mtx", :file, 0o100600, 367, "")
+        @test open(Tar.read_header, tarball) == hdr
+        @test Tar.list(tarball) == [hdr]
+    end
+    @testset "header errors" begin
+        # generate a valid header
+        buf = IOBuffer()
+        Tar.write_header(buf, Tar.Header("file", :file, 0o644, 123, ""))
+        data = Tar.dump_header(take!(buf))
+        notar = "This does not appear to be a TAR file/stream —"
+        # test various header problems
+        tarball = write_modified_header(data, :version => "AB")
+        test_error_prefix("$notar invalid version string for tar file: \"AB\"") do
+            open(Tar.read_header, tarball)
+        end
+        # malformed checksums
+        for str in [" ", " "^8, "1HKPhaUq", "\1"]
+            tarball = write_modified_header(data, :chksum => str)
+            test_error_prefix("$notar malformed chksum field: $(repr(str))") do
+                open(Tar.read_header, tarball)
+            end
+        end
+        # incorrect checksum
+        tarball = write_modified_header(data, :chksum => "123456\0 ")
+        test_error_prefix("$notar incorrect header checksum = 42798;") do
+            open(Tar.read_header, tarball)
+        end
+        # malformed sizes
+        for str in [" ", " "^12, "lVonG911HzaL", "\1"]
+            tarball = write_modified_header(data, :size => str)
+            test_error_prefix("malformed size field: $(repr(str))") do
+                open(Tar.read_header, tarball)
+            end
+        end
+        # largest valid binary size
+        str = lpad("\x7f"*"\xff"^7, 11, "\0")
+        tarball = write_modified_header(data, :size => "\x80$str")
+        @test open(Tar.read_header, tarball).size == typemax(Int64)
+        # smallest too large binary size
+        str = lpad("\x80"*"\x00"^7, 11, "\0")
+        tarball = write_modified_header(data, :size => "\x80$str")
+        test_error_prefix("binary integer size value too large: $(repr(str))") do
+            open(Tar.read_header, tarball)
+        end
+        # largest binary size (also too large)
+        str = "\xff"^12
+        tarball = write_modified_header(data, :size => str)
+        test_error_prefix("binary integer size value too large: $(repr(str))") do
+            open(Tar.read_header, tarball)
+        end
+        # malformed modes
+        for str in [" ", " "^8, "CbiX4Rkb", "\1"]
+            tarball = write_modified_header(data, :mode => str)
+            test_error_prefix("malformed mode field: $(repr(str))") do
+                open(Tar.read_header, tarball)
+            end
+        end
+        # various valid mode values
+        for str in [
+                "0", " 0", "  0", "       0",
+                "123", " 123", "  00123", "     123",
+                "177777", "  177777", "00177777", " 0177777",
+            ]
+            tarball = write_modified_header(data, :mode => str)
+            @test open(Tar.read_header, tarball).mode == parse(Int, str, base=8)
+        end
+        # smallest & largest too large mode values
+        for str in ["200000", "77777777"]
+            tarball = write_modified_header(data, :mode => str)
+            test_error_prefix("mode value too large: $str") do
+                open(Tar.read_header, tarball)
+            end
+        end
+    end
+    @testset "octal parsing" begin
+        buf = fill(0x0, 512)
+        buf[1:21] .= '7'
+        # largest valid octal value
+        @test Tar.read_header_int(buf, :name) == typemax(Int64)
+        # smallest too large octal value
+        buf[1] = '1'
+        buf[2:22] .= '0'
+        test_error_prefix("octal integer name value too large:") do
+            Tar.read_header_int(buf, :name)
+        end
+        # way too large octal value
+        for i = 1:length(buf)
+            buf[i] = '0' + (i % 8)
+        end
+        test_error_prefix("octal integer name value too large:") do
+            Tar.read_header_int(buf, :name)
+        end
+    end
+end

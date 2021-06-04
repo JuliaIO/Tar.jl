@@ -18,4 +18,4 @@ Tar_jll = "9b64493d-8859-5bf3-93d7-7c32dd38186f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Random", "Tar_jll", "Test", "SimpleBufferStream"]
+test = ["Random", "SimpleBufferStream", "Tar_jll", "Test"]
