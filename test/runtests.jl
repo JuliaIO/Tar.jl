@@ -913,13 +913,13 @@ end
         # smallest too large binary size
         str = lpad("\x80"*"\x00"^7, 11, "\0")
         tarball = write_modified_header(data, :size => "\x80$str")
-        test_error_prefix("binary integer size value too large: $(repr("\0$str"))") do
+        test_error_prefix("binary integer size value too large: $(repr(str))") do
             open(Tar.read_header, tarball)
         end
         # largest binary size (also too large)
-        str = "\xff"^11
-        tarball = write_modified_header(data, :size => "\xff$str")
-        test_error_prefix("binary integer size value too large: $(repr("\x7f$str"))") do
+        str = "\xff"^12
+        tarball = write_modified_header(data, :size => str)
+        test_error_prefix("binary integer size value too large: $(repr(str))") do
             open(Tar.read_header, tarball)
         end
         # malformed modes

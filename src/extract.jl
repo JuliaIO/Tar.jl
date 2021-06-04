@@ -624,15 +624,11 @@ end
 
 function read_header_size(buf::AbstractVector{UInt8})
     r = index_range(:size)
-    b1 = buf[r[1]]
+    b1 = buf[r[1]] # high bit set for binary
     b1 & 0x80 == 0 && return read_header_int(buf, :size)
-    # high bit set for binary
-    buf[r[1]] &= ~0x80
-    n = try read_header_bin(buf, :size)
-    finally
-        buf[r[1]] = b1
-    end
-    return n
+    b1 == 0x80 && return read_header_bin(buf, :size, r[1]+1:r[end])
+    val = String(buf[r])
+    header_error(buf, "binary integer size value too large: $(repr(val))")
 end
 
 function read_header_chr(buf::AbstractVector{UInt8}, fld::Symbol)
@@ -671,8 +667,10 @@ function read_header_int(buf::AbstractVector{UInt8}, fld::Symbol)
     return n
 end
 
-function read_header_bin(buf::AbstractVector{UInt8}, fld::Symbol)
-    r = index_range(fld)
+function read_header_bin(
+    buf::AbstractVector{UInt8}, fld::Symbol,
+    r::UnitRange{<:Integer} = index_range(fld),
+)
     n = Int64(0)
     for i in r
         if leading_zeros(n) <= 8
