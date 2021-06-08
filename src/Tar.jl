@@ -166,9 +166,12 @@ function list(
 end
 
 """
-    extract([ predicate, ] tarball, [ dir ];
-            [ skeleton, ] [ copy_symlinks ],
-            [ set_permissions ]) -> dir
+    extract(
+        [ predicate, ] tarball, [ dir ];
+        [ skeleton = <none>, ]
+        [ copy_symlinks = <auto>, ]
+        [ set_permissions = true, ]
+    ) -> dir
 
         predicate       :: Header --> Bool
         tarball         :: Union{AbstractString, AbstractCmd, IO}

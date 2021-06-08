@@ -63,8 +63,12 @@ recreated. The `skeleton` and `predicate` arguments cannot be used together.
 ### Tar.extract
 
 ```jl
-extract([ predicate, ] tarball, [ dir ];
-        [ skeleton, ] [ copy_symlinks ]) -> dir
+extract(
+    [ predicate, ] tarball, [ dir ];
+    [ skeleton = <none>, ]
+    [ copy_symlinks = <auto>, ]
+    [ set_permissions = true, ]
+) -> dir
 ```
 * `predicate       :: Header --> Bool`
 * `tarball         :: Union{AbstractString, AbstractCmd, IO}`
