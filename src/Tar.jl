@@ -166,14 +166,19 @@ function list(
 end
 
 """
-    extract([ predicate, ] tarball, [ dir ];
-            [ skeleton, ] [ copy_symlinks ]) -> dir
+    extract(
+        [ predicate, ] tarball, [ dir ];
+        [ skeleton = <none>, ]
+        [ copy_symlinks = <auto>, ]
+        [ set_permissions = true, ]
+    ) -> dir
 
-        predicate     :: Header --> Bool
-        tarball       :: Union{AbstractString, AbstractCmd, IO}
-        dir           :: AbstractString
-        skeleton      :: Union{AbstractString, AbstractCmd, IO}
-        copy_symlinks :: Bool
+        predicate       :: Header --> Bool
+        tarball         :: Union{AbstractString, AbstractCmd, IO}
+        dir             :: AbstractString
+        skeleton        :: Union{AbstractString, AbstractCmd, IO}
+        copy_symlinks   :: Bool
+        set_permissions :: Bool
 
 Extract a tar archive ("tarball") located at the path `tarball` into the
 directory `dir`. If `tarball` is an IO object instead of a path, then the
@@ -207,6 +212,8 @@ link to `/etc/passwd` will not be copied. Symlinks which are in any way cyclic
 will also not be copied and will instead be skipped. By default, `extract` will
 detect whether symlinks can be created in `dir` or not and will automatically
 copy symlinks if they cannot be created.
+
+If `set_permissions` is `false`, no permissions are set on the extracted files.
 """
 function extract(
     predicate::Function,
@@ -214,6 +221,7 @@ function extract(
     dir::Union{AbstractString, Nothing} = nothing;
     skeleton::Union{ArgWrite, Nothing} = nothing,
     copy_symlinks::Union{Bool, Nothing} = nothing,
+    set_permissions::Bool = true,
 )
     predicate === true_predicate || skeleton === nothing ||
         error("extract: predicate and skeleton cannot be used together")
@@ -230,6 +238,7 @@ function extract(
                     predicate, tar, dir,
                     skeleton = skeleton,
                     copy_symlinks = copy_symlinks,
+                    set_permissions = set_permissions,
                 )
             end
         end
@@ -241,11 +250,13 @@ function extract(
     dir::Union{AbstractString, Nothing} = nothing;
     skeleton::Union{ArgWrite, Nothing} = nothing,
     copy_symlinks::Union{Bool, Nothing} = nothing,
+    set_permissions::Bool = true,
 )
     extract(
         true_predicate, tarball, dir,
         skeleton = skeleton,
         copy_symlinks = copy_symlinks,
+        set_permissions = set_permissions,
     )
 end
 
