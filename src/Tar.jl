@@ -253,7 +253,7 @@ function extract(
         true_predicate, tarball, dir,
         skeleton = skeleton,
         copy_symlinks = copy_symlinks,
-        set_permissions = set_permissions
+        set_permissions = set_permissions,
     )
 end
 
