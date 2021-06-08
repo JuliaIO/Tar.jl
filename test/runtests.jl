@@ -866,9 +866,13 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
             Tar.extract(tarball, dir, set_permissions=false)
             f_path = joinpath(dir, "0-ffffffff")
             @test isfile(f_path)
+            !Sys.iswindows() && @test !isexecutable(f_path)
 
             x_path = joinpath(dir, "0-xxxxxxxx")
             @test isfile(x_path)
+            !Sys.iswindows() && @test !isexecutable(x_path)
+
+            @test isexecutable(f_path) == isexecutable(x_path)
         end
     end
 end
