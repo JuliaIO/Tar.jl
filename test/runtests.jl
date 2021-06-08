@@ -584,6 +584,7 @@ end
         @arg_test tar @test_throws ErrorException tar_count(tar, strict=true)
         @arg_test tar @test n + 1 == tar_count(tar, strict=false)
     end
+    rm(tarball)
 end
 
 @testset "API: extract" begin
@@ -703,6 +704,23 @@ end
                 rm(dir, recursive=true)
             end
         end
+    end
+    rm(tarball)
+
+    @testset "set_permissions" begin
+        tarball, _ = make_test_tarball()
+        dir = Tar.extract(tarball, set_permissions=false)
+        f_path = joinpath(dir, "0-ffffffff")
+        x_path = joinpath(dir, "0-xxxxxxxx")
+        @test isfile(f_path)
+        @test isfile(x_path)
+        if !Sys.iswindows()
+            @test !Sys.isexecutable(f_path)
+            @test !Sys.isexecutable(x_path)
+        end
+        @test Sys.isexecutable(f_path) == Sys.isexecutable(x_path)
+        rm(dir, recursive=true)
+        rm(tarball)
     end
 end
 
@@ -845,7 +863,7 @@ end
 
 if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
     @testset "windows permissions" begin
-        tarball, hash = make_test_tarball()
+        tarball, _ = make_test_tarball()
         mktempdir() do dir
             Tar.extract(tarball, dir)
             f_path = joinpath(dir, "0-ffffffff")
@@ -861,18 +879,6 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
             x_acl = readchomp(`icacls $(x_path)`)
             @test occursin("Everyone:(RX,WA)", x_acl)
         end
-
-        mktempdir() do dir
-            Tar.extract(tarball, dir, set_permissions=false)
-            f_path = joinpath(dir, "0-ffffffff")
-            @test isfile(f_path)
-            !Sys.iswindows() && @test !isexecutable(f_path)
-
-            x_path = joinpath(dir, "0-xxxxxxxx")
-            @test isfile(x_path)
-            !Sys.iswindows() && @test !isexecutable(x_path)
-
-            @test isexecutable(f_path) == isexecutable(x_path)
-        end
+        rm(tarball)
     end
 end
