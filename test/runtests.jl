@@ -926,11 +926,11 @@ end
             end
         end
         # largest valid binary size
-        str = lpad("\x7f"*"\xff"^7, 11, "\0")
+        str = "\0"^3*"\x7f"*"\xff"^7
         tarball = write_modified_header(data, :size => "\x80$str")
         @test open(Tar.read_header, tarball).size == typemax(Int64)
         # smallest too large binary size
-        str = lpad("\x80"*"\x00"^7, 11, "\0")
+        str = "\0"^3*"\x80"*"\x00"^7
         tarball = write_modified_header(data, :size => "\x80$str")
         test_error_prefix("binary integer size value too large: $(repr(str))") do
             open(Tar.read_header, tarball)
