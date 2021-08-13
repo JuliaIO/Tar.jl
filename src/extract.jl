@@ -339,7 +339,7 @@ function read_tarball(
 )
     write_skeleton_header(skeleton, buf=buf)
     # symbols for path types except symlinks store the link
-    paths = Dict{String,Any}()
+    paths = Dict{String,Union{String,Symbol,Int64}}()
     globals = Dict{String,String}()
     while !eof(tar)
         hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
@@ -358,7 +358,7 @@ function read_tarball(
                 Refusing to extract — possible attack!
                 """
             end
-            path = isempty(path) ? part : "$path/$part"
+            path = isempty(path) ? String(part) : "$path/$part"
         end
         hdr′ = Header(hdr, path=path)
         # check that hardlinks refer to already-seen files
