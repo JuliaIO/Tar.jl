@@ -358,7 +358,7 @@ function read_tarball(
                 Refusing to extract — possible attack!
                 """
             end
-            path = isempty(path) ? part : "$path/$part"
+            path = isempty(path) ? String(part) : "$path/$part"
         end
         hdr′ = Header(hdr, path=path)
         # check that hardlinks refer to already-seen files
@@ -371,7 +371,7 @@ function read_tarball(
             hdr = Header(hdr, link=link)
             hdr′ = Header(hdr′, link=link)
             what = get(paths, link, Symbol("non-existent"))
-            if what isa Integer # plain file
+            if what isa Int64 # plain file
                 hdr′ = Header(hdr′, size=what)
             else
                 err = """
