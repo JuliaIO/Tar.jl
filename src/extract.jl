@@ -339,7 +339,7 @@ function read_tarball(
 )
     write_skeleton_header(skeleton, buf=buf)
     # symbols for path types except symlinks store the link
-    paths = Dict{String,Union{String,Symbol,Int64}}()
+    paths = Dict{String,Any}()
     globals = Dict{String,String}()
     while !eof(tar)
         hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
@@ -371,7 +371,7 @@ function read_tarball(
             hdr = Header(hdr, link=link)
             hdr′ = Header(hdr′, link=link)
             what = get(paths, link, Symbol("non-existent"))
-            if what isa Integer # plain file
+            if what isa Int64 # plain file
                 hdr′ = Header(hdr′, size=what)
             else
                 err = """
