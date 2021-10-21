@@ -1,6 +1,6 @@
 # Tar.jl
 
-[![Build Status](https://travis-ci.org/JuliaIO/Tar.jl.svg?branch=master)](https://travis-ci.org/JuliaIO/Tar.jl)
+[![Build Status](https://github.com/JuliaIO/Tar.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaIO/Tar.jl/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/JuliaIO/Tar.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaIO/Tar.jl)
 
 The `Tar` package can list, extract and create POSIX TAR archives ("tarballs")
