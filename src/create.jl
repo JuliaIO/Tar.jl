@@ -159,7 +159,7 @@ function write_header(
             prefix = name = "" # empty in standard header
         end
     end
-    if (size >>> (3*12)) != 0
+    if size ≥ 68719476736 # 8^12
         push!(extended, "size" => string(size))
         # still written in binary in standard header
     end
@@ -206,7 +206,7 @@ end
 function write_standard_header(
     tar::IO,
     hdr::Header;
-    name::AbstractString = "",
+    name::AbstractString = hdr.path,
     prefix::AbstractString = "",
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
@@ -230,9 +230,6 @@ function write_standard_header(
         throw(ArgumentError("symlink target too long for standard header: $(repr(link))"))
     ncodeunits(m) ≤ 6 ||
         throw(ArgumentError("mode too large for standard header: 0o$m"))
-    ncodeunits(s) ≤ 12 ||
-        isempty(name) && isempty(prefix) || # after extended header, large size ok
-        throw(ArgumentError("size too large for standard header: $size (0o$s)"))
     isascii(type) ||
         throw(ArgumentError("non-ASCII type flag value: $(repr(type))"))
 
@@ -250,11 +247,11 @@ function write_standard_header(
             write(h, ' ')
         end
     else
-        @assert isempty(name) && isempty(prefix) # after extended header
         # emulate GNU tar: write binary size with leading bit set
-        write(h, 0x80 | ((size >> (8*11)) % UInt8))
+        # can encode up to 2^95; Int64 size field only up to 2^63-1
+        write(h, 0x80 | ((hdr.size >> (8*11)) % UInt8))
         for i = 10:-1:0
-            write(h, (size >> 8i) % UInt8)
+            write(h, (hdr.size >> 8i) % UInt8)
         end
     end
     write(h, "00000000000 ")    # mtime
