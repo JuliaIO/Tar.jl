@@ -143,6 +143,51 @@ end
     rm(tarball)
 end
 
+@testset "large files" begin
+    # don't generate enormous tarballs, just test header read/write
+    for (size, enc) in [
+            0                   => "00000000000 "
+            123456789           => "00726746425 "
+            9924559547          => "111743141273"
+            68719476735         => "777777777777"
+            68719476736         => "\x80\0\0\0\x00\x00\x00\x10\x00\x00\x00\x00"
+            7657359156661993681 => "\x80\0\0\0\x6a\x44\x67\x95\x22\x6c\x40\xd1"
+            9223372036854775807 => "\x80\0\0\0\x7f\xff\xff\xff\xff\xff\xff\xff"
+        ]
+        hdr = Tar.Header("file", :file, 0o644, size, "")
+        @testset "standard header" begin
+            buf = sprint(io -> Tar.write_standard_header(io, hdr))
+            @test ncodeunits(buf) == 512
+            dump = Dict(Tar.dump_header(codeunits(buf)))
+            @test dump[:size] == enc
+            hdr′ = Tar.read_standard_header(IOBuffer(buf))
+            @test hdr == hdr′
+        end
+        @testset "extended header" begin
+            buf = sprint(io -> Tar.write_header(io, hdr))
+            if hdr.size < 68719476736 # small file size == 8^12
+                @test ncodeunits(buf) == 512
+            else
+                @test ncodeunits(buf) == 3*512
+                io = IOBuffer(buf)
+                # check extended header
+                xhdr = Tar.read_standard_header(io)
+                @test xhdr.type == :x
+                # check extended data block
+                line = readline(io)
+                @test line == "$(xhdr.size) size=$(size)"
+                data = read!(io, fill(0xff, 512-ncodeunits(line)-1))
+                @test length(data) == 512-ncodeunits(line)-1
+                @test all(iszero, data)
+                # check standard header
+                hdr′ = Tar.read_standard_header(io)
+                @test hdr == hdr′
+                @test eof(io)
+            end
+        end
+    end
+end
+
 @testset "truncated tarballs" begin
     # make a simple tarball
     len = 1234
