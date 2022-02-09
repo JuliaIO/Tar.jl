@@ -1050,3 +1050,28 @@ end
         end
     end
 end
+
+@testset "self hardlink" begin
+    # setup
+    len = 1234
+    pad = mod(-len, 512)
+    data = rand(UInt8, len)
+    # create reference tarball
+    reference, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :file, 0o755, len, ""))
+    write(io, data)
+    write(io, fill(0x0, pad))
+    close(io)
+    hash = tree_hash(Tar.extract(reference))
+    # create tarball with self-referential hard link
+    tarball, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :file, 0o644, len, ""))
+    write(io, data)
+    write(io, fill(0x0, pad))
+    Tar.write_header(io, Tar.Header("file", :hardlink, 0o755, 0, "file"))
+    close(io)
+    # test that it behaves like the reference tarball
+    @test hash == Tar.tree_hash(tarball)
+    @test hash == tree_hash(Tar.extract(tarball))
+    @test read(reference) == read(Tar.rewrite(tarball))
+end
