@@ -364,28 +364,48 @@ end
     rm(tmp)
 end
 
-!Sys.iswindows() &&
-@testset "symlink overwrite" begin
-    tmp = mktempdir()
-    @testset "allow overwriting a symlink" begin
-        tarball₁, io = mktemp()
-        Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, tmp))
-        Tar.write_header(io, Tar.Header("path", :file, 0o644, 0, ""))
-        close(io)
-        hash = Tar.tree_hash(tarball₁)
-        tree₁ = Tar.extract(tarball₁)
-        @test hash == tree_hash(tree₁)
-        tarball₂, io = mktemp()
-        Tar.write_header(io, Tar.Header("path", :file, 0o644, 0, ""))
-        close(io)
-        @test hash == Tar.tree_hash(tarball₂)
-        tree₂ = Tar.extract(tarball₂)
-        @test hash == tree_hash(tree₂)
-        rm(tree₁, recursive=true)
-        rm(tree₂, recursive=true)
-        rm(tarball₁)
-        rm(tarball₂)
+@testset "overwrites" begin
+    tmp = mktempdir() # external link target
+    file = Tar.Header("file", :file, 0o755, 0, "")
+    hdrs = [
+        Tar.Header("path", :file, 0o644, 0, "")
+        Tar.Header("path", :file, 0o755, 0, "")
+        Tar.Header("path", :directory, 0o755, 0, "")
+        Tar.Header("path", :symlink, 0o755, 0, tmp)
+        Tar.Header("path", :symlink, 0o755, 0, "file")
+        Tar.Header("path", :symlink, 0o755, 0, "non-existent")
+        Tar.Header("path", :hardlink, 0o755, 0, "file")
+    ]
+    filter!(hdrs) do hdr
+        !Sys.iswindows() && return true
+        hdr.type == :symlink && return false
+        VERSION < v"1.6" && hdr.mode != 0o755 && return false
+        return true
     end
+    @testset "allow overwrites" begin
+        for hdr₁ in hdrs, hdr₂ in hdrs
+            tarball₁, io = mktemp()
+            Tar.write_header(io, file)
+            Tar.write_header(io, hdr₁)
+            Tar.write_header(io, hdr₂)
+            close(io)
+            hash = Tar.tree_hash(tarball₁)
+            tree₁ = Tar.extract(tarball₁)
+            @test hash == tree_hash(tree₁)
+            tarball₂, io = mktemp()
+            Tar.write_header(io, file)
+            Tar.write_header(io, hdr₂)
+            close(io)
+            @test hash == Tar.tree_hash(tarball₂)
+            tree₂ = Tar.extract(tarball₂)
+            @test hash == tree_hash(tree₂)
+            rm(tree₁, recursive=true)
+            rm(tree₂, recursive=true)
+            rm(tarball₁)
+            rm(tarball₂)
+        end
+    end
+    !Sys.iswindows() &&
     @testset "allow write into directory overwriting a symlink" begin
         # make sure "path" is removed from links set
         tarball₁, io = mktemp()
