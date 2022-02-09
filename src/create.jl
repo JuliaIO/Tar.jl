@@ -89,7 +89,7 @@ function write_tarball(
     tar_path::String = ".";
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    hdr, data = callback(sys_path, tar_path)
+    hdr, data = callback(sys_path, tar_path)::Tuple{Header,Any}
     if hdr.type == :directory
         data isa Union{Nothing, AbstractDict{<:AbstractString}} ||
             error("callback must return a dict of strings, got: $(repr(data))")

@@ -190,7 +190,7 @@ function link_target(
     isempty(path_parts) && return
     target = join(path_parts, '/')
     # if link ends in `/` or `.` target must be a directory
-    part in ("", ".") && paths[target] != :directory && return
+    part in ("", ".") && paths[target] !== :directory && return
     # can't copy a circular link to a prefix of itself
     (path == target || startswith(path, "$target/")) && return
     return target
