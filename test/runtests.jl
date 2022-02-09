@@ -82,7 +82,7 @@ end
     tarball, hash = make_test_tarball()
     @testset "Tar.tree_hash" begin
         arg_readers(tarball) do tar
-            @arg_test tar @test Tar.tree_hash(tar, skip_empty=true) == hash
+            @arg_test tar @test Tar.tree_hash(tar) == hash
             @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar)
             @arg_test tar @test empty_tree_sha1 ==
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha1")
@@ -261,7 +261,7 @@ if @isdefined(gtar)
             return tarball
         end
         # TODO: check that extended headers contain `mtime` etc.
-        @test Tar.tree_hash(tarball, skip_empty=true) == hash
+        @test Tar.tree_hash(tarball) == hash
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
@@ -277,7 +277,7 @@ if @isdefined(gtar)
         @test any(h.path == "././@LongLink" && h.type == :L for h in hdrs)
         @test any(h.path == "././@LongLink" && h.type == :K for h in hdrs)
         # test that Tar can extract these GNU entries correctly
-        @test Tar.tree_hash(tarball, skip_empty=true) == hash
+        @test Tar.tree_hash(tarball) == hash
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
@@ -637,8 +637,8 @@ end
     hash = tree_hash(dir)
     tarball = Tar.create(dir)
     rm(dir, recursive=true)
-    @test hash == Tar.tree_hash(tarball, skip_empty=true)
-    @test hash != Tar.tree_hash(tarball, skip_empty=false)
+    @test hash != Tar.tree_hash(tarball, skip_empty=true)
+    @test hash == Tar.tree_hash(tarball, skip_empty=false)
 
     @testset "without predicate" begin
         arg_readers(tarball) do tar
@@ -685,7 +685,7 @@ end
             # This will cause an assertion error because we know the padded space beyond the
             # end of the test file content will be larger than 17 bytes, causing the `for`
             # loop to exit early, failing the assertion.
-            @test hash == Tar.tree_hash(ChaosBufferStream(io; chunksizes=[17]); skip_empty=true)
+            @test hash == Tar.tree_hash(ChaosBufferStream(io; chunksizes=[17]))
         end
 
         # This also affected read_data()
@@ -700,7 +700,7 @@ end
         # of this type within `Tar.tree_hash()`.
         for idx in 1:100
             open(tarball, read=true) do io
-                @test hash == Tar.tree_hash(ChaosBufferStream(io), skip_empty=true)
+                @test hash == Tar.tree_hash(ChaosBufferStream(io))
             end
         end
     end
@@ -715,8 +715,8 @@ end
 
         # predicate to skip paths ending in `.skip`
         predicate = hdr -> !any(splitext(p)[2] == ".skip" for p in split(hdr.path, '/'))
-        @test hash == Tar.tree_hash(predicate, tarball, skip_empty=true)
-        @test hash != Tar.tree_hash(predicate, tarball, skip_empty=false)
+        @test hash != Tar.tree_hash(predicate, tarball, skip_empty=true)
+        @test hash == Tar.tree_hash(predicate, tarball, skip_empty=false)
 
         arg_readers(tarball) do tar
             # extract(predicate, tarball)
