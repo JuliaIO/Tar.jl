@@ -21,8 +21,8 @@ The public API of `Tar` includes five functions and one type:
 * `create` — creates a tarball from an on-disk file tree
 * `extract` — extracts a tarball to an on-disk file tree
 * `list` — lists the contents of a tarball as a vector of `Header` objects
-* `rewrite` — rewrite a tarball to the standard format `create` produces
-* `tree_hash` — compute a tree hash of the content of a tarball (default: git
+* `rewrite` — rewrite a tarball to the standard format `create` produces
+* `tree_hash` — compute a tree hash of the content of a tarball (default: git
   SHA1)
 * `Header` — struct representing metadata that `Tar` considers important in a
   TAR entry
@@ -335,12 +335,12 @@ let files and directories have their natural modification times.
 If the current user has elevated privileges, the `tar` command will attempt to
 change the owner and group of files to what is recorded in the tarball, whereas
 `Tar.extract` will never do that. The `tar` command may also try to restore
-permissions without respecting the current `umask` if the user is an
-administrator. Again, `Tar.extract` will never do that—it behaves the same way
+permissions without respecting the current `umask` if the user is an
+administrator. Again, `Tar.extract` will never do that—it behaves the same way
 for any users: by ignoring any user/group/permission information, aside from
 whether plain files are executable by their owner or not. To suppress these
-behaviors with GNU tar, you can use the `--no-same-owner` and
-`--no-same-permissions` options; these options are not broadly supported by
+behaviors with GNU tar, you can use the `--no-same-owner` and
+`--no-same-permissions` options; these options are not broadly supported by
 other `tar` commands, which may not have options to support these behaviors.
 
 ## Design & Features

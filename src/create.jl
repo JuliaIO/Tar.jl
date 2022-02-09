@@ -148,8 +148,8 @@ function write_header(
     end
     prefix = ""
     name = path
-    if ncodeunits(path) > 100
-        if ncodeunits(path) < 256 && (i = findprev('/', path, 100)) !== nothing
+    if ncodeunits(path) > 100
+        if ncodeunits(path) < 256 && (i = findprev('/', path, 100)) !== nothing
             # try splitting into prefix and name
             prefix = path[1:prevind(path, i)]
             name   = path[nextind(path, i):end]
@@ -220,7 +220,7 @@ function write_standard_header(
     s = string(hdr.size, base=8, pad=11)
 
     # error checking (presumes checks done by write_header)
-    hdr.size < 0 &&
+    hdr.size < 0 &&
         throw(ArgumentError("negative file size is invalid: $(hdr.size)"))
     ncodeunits(prefix) ≤ 155 ||
         throw(ArgumentError("path prefix too long for standard header: $(repr(prefix))"))
@@ -299,7 +299,7 @@ function write_data(
         t -= n
     end
     @assert size == 0
-    @assert 0 ≤ t < 512
+    @assert 0 ≤ t < 512
     t > 0 && (w += write(tar, fill!(view(buf, 1:t), 0)))
     return w
 end

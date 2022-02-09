@@ -117,7 +117,7 @@ function check_header(hdr::Header)
         err("non-directory path ending with '/'")
     hdr.type != :directory && (hdr.path == "." || endswith(hdr.path, "/.")) &&
         err("non-directory path ending with '.' component")
-    hdr.size < 0 &&
+    hdr.size < 0 &&
         err("negative file size")
     isempty(errors) && return
 
