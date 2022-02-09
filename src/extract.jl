@@ -355,7 +355,7 @@ function read_tarball(
                 Tarball contains path with symlink prefix:
                 - path = $(repr(hdr.path))
                 - prefix = $(repr(path))
-                Refusing to extract — possible attack!
+                Refusing to extract — possible attack!
                 """
             end
             path = isempty(path) ? String(part) : "$path/$part"
@@ -378,7 +378,7 @@ function read_tarball(
                 Tarball contains hardlink with $what target:
                 - path = $(repr(hdr.path))
                 - target = $(repr(hdr.link))
-                Refusing to extract — possible attack!
+                Refusing to extract — possible attack!
                 """
             end
         end
@@ -486,7 +486,7 @@ function read_extended_metadata(
         while j ≤ size
             byte = data[j += 1]
             byte == UInt8(' ') && break
-            UInt8('0') ≤ byte ≤ UInt8('9') || malformed()
+            UInt8('0') ≤ byte ≤ UInt8('9') || malformed()
             m, fm = mul_with_overflow(m, 10)
             m, fa = add_with_overflow(m, Int(byte - UInt8('0')))
             fm | fa &&
@@ -504,7 +504,7 @@ function read_extended_metadata(
         # data[j] is ` ` (space)
         # data[k] is `=` (equals)
         # data[l] is `\n` (newline)
-        i+1 < j < k < l || malformed()
+        i+1 < j < k < l || malformed()
         @assert data[j] == UInt8(' ')
         @assert data[k] == UInt8('=')
         data[l] == UInt('\n') || malformed()
@@ -601,7 +601,7 @@ function read_standard_header(
     link = read_header_str(buf, :linkname)
     prefix = read_header_str(buf, :prefix)
     # check that mode isn't too big
-    mode ≤ typemax(typemax(UInt16)) ||
+    mode ≤ typemax(typemax(UInt16)) ||
         header_error(buf, "mode value too large: $(string(mode, base=8))")
     # combine prefix & name fields
     path = isempty(prefix) ? name : "$prefix/$name"
@@ -656,7 +656,7 @@ function read_header_int(buf::AbstractVector{UInt8}, fld::Symbol)
         before && byte == UInt8(' ') && continue
         byte in (0x00, UInt8(' ')) && break
         UInt8('0') <= byte <= UInt8('7') || header_error(buf, fld)
-        if leading_zeros(n) <= 3
+        if leading_zeros(n) <= 3
             val = String(buf[r])
             header_error(buf, "octal integer $fld value too large: $(repr(val))")
         end
@@ -674,7 +674,7 @@ function read_header_bin(
 )
     n = Int64(0)
     for i in r
-        if leading_zeros(n) <= 8
+        if leading_zeros(n) <= 8
             val = String(buf[r])
             header_error(buf, "binary integer $fld value too large: $(repr(val))")
         end
