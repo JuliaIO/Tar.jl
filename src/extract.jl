@@ -58,13 +58,14 @@ function extract_tarball(
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         # get the file system version of the path
         sys_path = reduce(joinpath, init=root, parts)
-        # ensure dirname(sys_path) is a directory
+        src_path = joinpath(root, hdr.link)
         dir = dirname(sys_path)
         st = stat(dir)
+        # ensure dirname(sys_path) is a directory
         if !isdir(st)
             ispath(st) && rm(dir, force=true, recursive=true)
             mkpath(dir)
-        else
+        elseif hdr.type != :hardlink || src_path != sys_path
             st = lstat(sys_path)
             hdr.type == :directory && isdir(st) && return # from callback
             ispath(st) && rm(sys_path, force=true, recursive=true)
@@ -75,8 +76,7 @@ function extract_tarball(
         elseif hdr.type == :symlink
             copy_symlinks || symlink(hdr.link, sys_path)
         elseif hdr.type == :hardlink
-            src_path = joinpath(root, hdr.link)
-            cp(src_path, sys_path)
+            src_path != sys_path && cp(src_path, sys_path)
         elseif hdr.type == :file
             read_data(tar, sys_path, size=hdr.size, buf=buf)
         else # should already be caught by check_header

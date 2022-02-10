@@ -82,7 +82,7 @@ end
     tarball, hash = make_test_tarball()
     @testset "Tar.tree_hash" begin
         arg_readers(tarball) do tar
-            @arg_test tar @test Tar.tree_hash(tar, skip_empty=true) == hash
+            @arg_test tar @test Tar.tree_hash(tar) == hash
             @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar)
             @arg_test tar @test empty_tree_sha1 ==
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha1")
@@ -261,7 +261,7 @@ if @isdefined(gtar)
             return tarball
         end
         # TODO: check that extended headers contain `mtime` etc.
-        @test Tar.tree_hash(tarball, skip_empty=true) == hash
+        @test Tar.tree_hash(tarball) == hash
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
@@ -277,7 +277,7 @@ if @isdefined(gtar)
         @test any(h.path == "././@LongLink" && h.type == :L for h in hdrs)
         @test any(h.path == "././@LongLink" && h.type == :K for h in hdrs)
         # test that Tar can extract these GNU entries correctly
-        @test Tar.tree_hash(tarball, skip_empty=true) == hash
+        @test Tar.tree_hash(tarball) == hash
         root = Tar.extract(tarball)
         check_tree_hash(hash, root)
     end
@@ -364,28 +364,48 @@ end
     rm(tmp)
 end
 
-!Sys.iswindows() &&
-@testset "symlink overwrite" begin
-    tmp = mktempdir()
-    @testset "allow overwriting a symlink" begin
-        tarball₁, io = mktemp()
-        Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, tmp))
-        Tar.write_header(io, Tar.Header("path", :file, 0o644, 0, ""))
-        close(io)
-        hash = Tar.tree_hash(tarball₁)
-        tree₁ = Tar.extract(tarball₁)
-        @test hash == tree_hash(tree₁)
-        tarball₂, io = mktemp()
-        Tar.write_header(io, Tar.Header("path", :file, 0o644, 0, ""))
-        close(io)
-        @test hash == Tar.tree_hash(tarball₂)
-        tree₂ = Tar.extract(tarball₂)
-        @test hash == tree_hash(tree₂)
-        rm(tree₁, recursive=true)
-        rm(tree₂, recursive=true)
-        rm(tarball₁)
-        rm(tarball₂)
+@testset "overwrites" begin
+    tmp = mktempdir() # external link target
+    file = Tar.Header("file", :file, 0o755, 0, "")
+    hdrs = [
+        Tar.Header("path", :file, 0o644, 0, "")
+        Tar.Header("path", :file, 0o755, 0, "")
+        Tar.Header("path", :directory, 0o755, 0, "")
+        Tar.Header("path", :symlink, 0o755, 0, tmp)
+        Tar.Header("path", :symlink, 0o755, 0, "file")
+        Tar.Header("path", :symlink, 0o755, 0, "non-existent")
+        Tar.Header("path", :hardlink, 0o755, 0, "file")
+    ]
+    filter!(hdrs) do hdr
+        !Sys.iswindows() && return true
+        hdr.type == :symlink && return false
+        VERSION < v"1.6" && hdr.mode != 0o755 && return false
+        return true
     end
+    @testset "allow overwrites" begin
+        for hdr₁ in hdrs, hdr₂ in hdrs
+            tarball₁, io = mktemp()
+            Tar.write_header(io, file)
+            Tar.write_header(io, hdr₁)
+            Tar.write_header(io, hdr₂)
+            close(io)
+            hash = Tar.tree_hash(tarball₁)
+            tree₁ = Tar.extract(tarball₁)
+            @test hash == tree_hash(tree₁)
+            tarball₂, io = mktemp()
+            Tar.write_header(io, file)
+            Tar.write_header(io, hdr₂)
+            close(io)
+            @test hash == Tar.tree_hash(tarball₂)
+            tree₂ = Tar.extract(tarball₂)
+            @test hash == tree_hash(tree₂)
+            rm(tree₁, recursive=true)
+            rm(tree₂, recursive=true)
+            rm(tarball₁)
+            rm(tarball₂)
+        end
+    end
+    !Sys.iswindows() &&
     @testset "allow write into directory overwriting a symlink" begin
         # make sure "path" is removed from links set
         tarball₁, io = mktemp()
@@ -637,8 +657,8 @@ end
     hash = tree_hash(dir)
     tarball = Tar.create(dir)
     rm(dir, recursive=true)
-    @test hash == Tar.tree_hash(tarball, skip_empty=true)
-    @test hash != Tar.tree_hash(tarball, skip_empty=false)
+    @test hash != Tar.tree_hash(tarball, skip_empty=true)
+    @test hash == Tar.tree_hash(tarball, skip_empty=false)
 
     @testset "without predicate" begin
         arg_readers(tarball) do tar
@@ -685,7 +705,7 @@ end
             # This will cause an assertion error because we know the padded space beyond the
             # end of the test file content will be larger than 17 bytes, causing the `for`
             # loop to exit early, failing the assertion.
-            @test hash == Tar.tree_hash(ChaosBufferStream(io; chunksizes=[17]); skip_empty=true)
+            @test hash == Tar.tree_hash(ChaosBufferStream(io; chunksizes=[17]))
         end
 
         # This also affected read_data()
@@ -700,7 +720,7 @@ end
         # of this type within `Tar.tree_hash()`.
         for idx in 1:100
             open(tarball, read=true) do io
-                @test hash == Tar.tree_hash(ChaosBufferStream(io), skip_empty=true)
+                @test hash == Tar.tree_hash(ChaosBufferStream(io))
             end
         end
     end
@@ -715,8 +735,8 @@ end
 
         # predicate to skip paths ending in `.skip`
         predicate = hdr -> !any(splitext(p)[2] == ".skip" for p in split(hdr.path, '/'))
-        @test hash == Tar.tree_hash(predicate, tarball, skip_empty=true)
-        @test hash != Tar.tree_hash(predicate, tarball, skip_empty=false)
+        @test hash != Tar.tree_hash(predicate, tarball, skip_empty=true)
+        @test hash == Tar.tree_hash(predicate, tarball, skip_empty=false)
 
         arg_readers(tarball) do tar
             # extract(predicate, tarball)
@@ -1029,4 +1049,29 @@ end
             Tar.read_header_int(buf, :name)
         end
     end
+end
+
+@testset "self hardlink" begin
+    # setup
+    len = 1234
+    pad = mod(-len, 512)
+    data = rand(UInt8, len)
+    # create reference tarball
+    reference, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :file, 0o755, len, ""))
+    write(io, data)
+    write(io, fill(0x0, pad))
+    close(io)
+    hash = tree_hash(Tar.extract(reference))
+    # create tarball with self-referential hard link
+    tarball, io = mktemp()
+    Tar.write_header(io, Tar.Header("file", :file, 0o644, len, ""))
+    write(io, data)
+    write(io, fill(0x0, pad))
+    Tar.write_header(io, Tar.Header("file", :hardlink, 0o755, 0, "file"))
+    close(io)
+    # test that it behaves like the reference tarball
+    @test hash == Tar.tree_hash(tarball)
+    @test hash == tree_hash(Tar.extract(tarball))
+    @test read(reference) == read(Tar.rewrite(tarball))
 end

@@ -107,10 +107,7 @@ function tree_hash(::Type{HashType}, root::AbstractString) where HashType
         filepath = abspath(root, f)
         mode = gitmode(filepath)
         if mode == mode_dir
-            # If this directory contains no files, then skip it
-            contains_files(filepath) || continue
-
-            # Otherwise, hash it up!
+            # git skips emtpy directories, this doesn't
             hash = tree_hash(HashType, filepath)
         else
             hash = blob_hash(HashType, filepath)
