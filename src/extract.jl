@@ -182,7 +182,7 @@ function link_target(
             isempty(link_parts) && break
             what = paths[prefix]
             if what isa AbstractString
-                prefix = link_target(paths, prefix, what)
+                prefix = link_target(paths, prefix, convert(String, what)::String)
                 path_parts = split(prefix, '/')
             end
         end
