@@ -3,8 +3,10 @@ function create_tarball(
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    kwargs...
 )
-    write_tarball(tar, root, buf=buf) do sys_path, tar_path
+    options = Options(; kwargs...)
+    write_tarball(tar, root, options, buf=buf) do sys_path, tar_path
         hdr = path_header(sys_path, tar_path)
         hdr.type != :directory && return hdr, sys_path
         paths = Dict{String,String}()
@@ -86,6 +88,7 @@ function write_tarball(
     callback::Function,
     tar::IO,
     sys_path::Any,
+    options,
     tar_path::String = ".";
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )

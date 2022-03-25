@@ -134,7 +134,7 @@ function check_header(hdr::Header)
     error(msg)
 end
 
-function path_header(sys_path::AbstractString, tar_path::AbstractString)
+function path_header(sys_path::AbstractString, tar_path::AbstractString, options)
     st = lstat(sys_path)
     if islink(st)
         size = 0
@@ -158,7 +158,7 @@ function path_header(sys_path::AbstractString, tar_path::AbstractString)
         end
         link = ""
     else
-        error("unsupported file type: $(repr(sys_path))")
+        unsupported_file_type(options, sys_path)
     end
     Header(tar_path, type, mode, size, link)
 end

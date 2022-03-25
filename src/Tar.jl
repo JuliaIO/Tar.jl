@@ -7,6 +7,8 @@ const true_predicate = _ -> true
 # 2 MiB to take advantage of THP if enabled
 const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
 
+include("types.jl")
+
 # TODO: add some version of this method to Base
 !hasmethod(skip, Tuple{Union{Base.Process, Base.ProcessChain}, Integer}) &&
 function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
@@ -460,5 +462,7 @@ check_tree_hash_tarball(tarball::AbstractString) =
     """)
 
 check_tree_hash_tarball(tarball::ArgRead) = nothing
+
+include("options.jl")
 
 end # module
