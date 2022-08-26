@@ -701,7 +701,7 @@ function read_data(
     padded_size = round_up(size)
     while padded_size > 0
         max_read_len = Int(min(padded_size, length(buf)))
-        read_len = readbytes!(tar, buf, max_read_len)
+        read_len = readbytes!(tar, buf, max_read_len)::Integer
         write(tee, view(buf, 1:read_len))
         read_len < max_read_len && eof(tar) && throw(EOFError())
         size -= write(file, view(buf, 1:Int(min(read_len, size))))
