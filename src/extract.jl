@@ -576,7 +576,7 @@ function read_standard_header(
     # zero block indicates end of tarball
     if all(iszero, data)
         while !eof(io)
-            r = readbytes!(io, buf)
+            r = readbytes!(io, buf)::Integer
             write(tee, view(buf, 1:r))
         end
         return nothing
