@@ -383,7 +383,7 @@ function read_tarball(
             end
         end
         # check if we should extract or skip
-        if !predicate(hdr′) # pass normalized header
+        if !(predicate(hdr′)::Bool) # pass normalized header
             skip_data(tar, hdr.size)
             continue
         end
