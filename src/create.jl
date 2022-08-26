@@ -292,7 +292,7 @@ function write_data(
     w, t = 0, round_up(size)
     while size > 0
         b = min(size, length(buf))
-        n = readbytes!(data, buf, b)
+        n = readbytes!(data, buf, b)::Integer
         n < b && eof(data) && throw(EOFError())
         w += write(tar, view(buf, 1:n))
         size -= n
