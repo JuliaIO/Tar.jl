@@ -291,8 +291,8 @@ function write_data(
         throw(ArgumentError("cannot write negative data: $size"))
     w, t = 0, round_up(size)
     while size > 0
-        b = min(size, length(buf))
-        n = readbytes!(data, buf, b)::Integer
+        b = Int(min(size, length(buf)))::Int
+        n = Int(readbytes!(data, buf, b))::Int
         n < b && eof(data) && throw(EOFError())
         w += write(tar, view(buf, 1:n))
         size -= n

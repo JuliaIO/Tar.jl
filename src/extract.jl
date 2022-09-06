@@ -296,8 +296,8 @@ function git_file_hash(
     # where you write data to an IO object and it maintains a hash
     padded_size = round_up(size)
     while padded_size > 0
-        max_read_len = Int(min(padded_size, length(buf)))
-        read_len = readbytes!(tar, buf, max_read_len)
+        max_read_len = Int(min(padded_size, length(buf)))::Int
+        read_len = Int(readbytes!(tar, buf, max_read_len))::Int
         read_len < max_read_len && eof(tar) && throw(EOFError())
         nonpadded_view = view(buf, 1:Int(min(read_len, size)))
         SHA.update!(ctx, nonpadded_view)
@@ -576,7 +576,7 @@ function read_standard_header(
     # zero block indicates end of tarball
     if all(iszero, data)
         while !eof(io)
-            r = readbytes!(io, buf)::Integer
+            r = Int(readbytes!(io, buf))::Int
             write(tee, view(buf, 1:r))
         end
         return nothing
@@ -700,8 +700,8 @@ function read_data(
 )::Nothing
     padded_size = round_up(size)
     while padded_size > 0
-        max_read_len = Int(min(padded_size, length(buf)))
-        read_len = readbytes!(tar, buf, max_read_len)::Integer
+        max_read_len = Int(min(padded_size, length(buf)))::Int
+        read_len = Int(readbytes!(tar, buf, max_read_len))::Int
         write(tee, view(buf, 1:read_len))
         read_len < max_read_len && eof(tar) && throw(EOFError())
         size -= write(file, view(buf, 1:Int(min(read_len, size))))
