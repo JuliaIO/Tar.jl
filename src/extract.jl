@@ -182,7 +182,7 @@ function link_target(
             isempty(link_parts) && break
             what = paths[prefix]
             if what isa AbstractString
-                prefix = link_target(paths, prefix, what)
+                prefix = link_target(paths, prefix, convert(String, what)::String)
                 path_parts = split(prefix, '/')
             end
         end
@@ -296,8 +296,8 @@ function git_file_hash(
     # where you write data to an IO object and it maintains a hash
     padded_size = round_up(size)
     while padded_size > 0
-        max_read_len = Int(min(padded_size, length(buf)))
-        read_len = readbytes!(tar, buf, max_read_len)
+        max_read_len = Int(min(padded_size, length(buf)))::Int
+        read_len = Int(readbytes!(tar, buf, max_read_len))::Int
         read_len < max_read_len && eof(tar) && throw(EOFError())
         nonpadded_view = view(buf, 1:Int(min(read_len, size)))
         SHA.update!(ctx, nonpadded_view)
@@ -383,7 +383,7 @@ function read_tarball(
             end
         end
         # check if we should extract or skip
-        if !predicate(hdr′) # pass normalized header
+        if !(predicate(hdr′)::Bool) # pass normalized header
             skip_data(tar, hdr.size)
             continue
         end
@@ -576,7 +576,7 @@ function read_standard_header(
     # zero block indicates end of tarball
     if all(iszero, data)
         while !eof(io)
-            r = readbytes!(io, buf)
+            r = Int(readbytes!(io, buf))::Int
             write(tee, view(buf, 1:r))
         end
         return nothing
@@ -587,7 +587,7 @@ function read_standard_header(
         check_checksum_field(buf)
     catch err
         if err isa ErrorException
-            msg = match(r"^(.*?)\s*\[header block data\]"s, err.msg).captures[1]
+            msg = match(r"^(.*?)\s*\[header block data\]"s, convert(Union{String, SubString{String}}, err.msg)::Union{String, SubString{String}}).captures[1]
             msg = "This does not appear to be a TAR file/stream — $msg. Note: Tar.jl does not handle decompression; if the tarball is compressed you must use an external command like `gzcat` or package like CodecZlib.jl to decompress it. See the README file for examples."
             err = ErrorException(msg)
         end
@@ -700,8 +700,8 @@ function read_data(
 )::Nothing
     padded_size = round_up(size)
     while padded_size > 0
-        max_read_len = Int(min(padded_size, length(buf)))
-        read_len = readbytes!(tar, buf, max_read_len)
+        max_read_len = Int(min(padded_size, length(buf)))::Int
+        read_len = Int(readbytes!(tar, buf, max_read_len))::Int
         write(tee, view(buf, 1:read_len))
         read_len < max_read_len && eof(tar) && throw(EOFError())
         size -= write(file, view(buf, 1:Int(min(read_len, size))))

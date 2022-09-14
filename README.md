@@ -259,9 +259,9 @@ will only list other kinds of records if called with `strict=false`.
 
 ### Compression
 
-It is typical to compress tarballs when saving of transferring them. In the UNIX
+It is typical to compress tarballs when saving or transferring them. In the UNIX
 tradition of doing one thing and doing it well, the `Tar` package does not do
-any kind of compression and instead makes it easy to compose it's API with
+any kind of compression and instead makes it easy to compose its API with
 external compression tools. The simplest way to read a compressed archive is to
 use a command-line tool to decompress it. For example:
 ```jl
@@ -278,8 +278,8 @@ This assumes that `dir` is the directory you want to archive and `tarball` is
 the path you want to create as a compressed archive.
 
 If you want to compress or decompress a tarball in the same process, you can
-using various
-[[TranscodingStreams](https://github.com/JuliaIO/TranscodingStreams.jl)
+use various
+[TranscodingStreams](https://github.com/JuliaIO/TranscodingStreams.jl)
 packages:
 ```jl
 using CodecZlib
