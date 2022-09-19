@@ -149,10 +149,13 @@ function write_header(
     prefix = ""
     name = path
     if ncodeunits(path) > 100
-        if ncodeunits(path) < 256 && (i = findprev('/', path, 100)) !== nothing
-            # try splitting into prefix and name
-            prefix = path[1:prevind(path, i)]
-            name   = path[nextind(path, i):end]
+        if ncodeunits(path) < 256
+            i = findprev('/', path, 100)
+            if i !== nothing
+                # try splitting into prefix and name
+                prefix = path[1:prevind(path, i)]
+                name   = path[nextind(path, i):end]
+            end
         end
         if ncodeunits(name) > 100 || ncodeunits(prefix) > 155
             push!(extended, "path" => path)
