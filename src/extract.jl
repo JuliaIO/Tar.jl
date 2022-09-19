@@ -497,13 +497,13 @@ function read_extended_metadata(
             byte = data[k += 1]
             byte == UInt8('=') && break
         end
-        # data[i+1:j-1] is the length in decimal
-        # data[j+1:k-1] is the key string
-        # data[k+1:l-1] is the value string
-        # data[i] is end of previous
-        # data[j] is ` ` (space)
-        # data[k] is `=` (equals)
-        # data[l] is `\n` (newline)
+        # data[i]       is end of previous
+        # data[i+1:j-1] is length in decimal
+        # data[j]       is ` ` (space)
+        # data[j+1:k-1] is key string
+        # data[k]       is `=` (equals)
+        # data[k+1:l-1] is value string
+        # data[l]       is `\n` (newline)
         i+1 < j < k < l || malformed()
         @assert data[j] == UInt8(' ')
         @assert data[k] == UInt8('=')
