@@ -251,4 +251,16 @@ function test_error_prefix(f::Function, prefix::AbstractString)
     @test startswith(val.msg, prefix)
 end
 
+function test_extract_attack(hdrs::Tar.Header...)
+    tarball, io = mktemp()
+    for hdr in hdrs
+        Tar.write_header(io, hdr)
+    end
+    close(io)
+    @test_throws ErrorException Tar.extract(tarball)
+    @test_throws ErrorException Tar.rewrite(tarball)
+    @test_throws ErrorException Tar.tree_hash(tarball)
+    rm(tarball)
+end
+
 const test_data_dir = joinpath(@__DIR__, "data")

@@ -317,51 +317,37 @@ end
 end
 
 @testset "symlink attacks" begin
-    # not dangerous but still not allowed
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("dir", :directory, 0o755, 0, ""))
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, "dir"))
-    Tar.write_header(io, Tar.Header("link/target", :file, 0o644, 0, ""))
-    close(io)
-    @test_throws ErrorException Tar.extract(tarball)
-    @test_throws ErrorException Tar.tree_hash(tarball)
-    rm(tarball)
+    tmpd = mktempdir()
+    # attempt to extract file into symlink directory (safe but not allowed)
+    test_extract_attack(
+        Tar.Header("dir", :directory, 0o755, 0, ""),
+        Tar.Header("link", :symlink, 0o755, 0, "dir"),
+        Tar.Header("link/target", :file, 0o644, 0, ""),
+    )
     # attempt to write through relative link out of root
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, "../target"))
-    Tar.write_header(io, Tar.Header("link/attack", :file, 0o644, 0, ""))
-    close(io)
-    @test_throws ErrorException Tar.extract(tarball)
-    @test_throws ErrorException Tar.tree_hash(tarball)
-    rm(tarball)
+    test_extract_attack(
+        Tar.Header("link", :symlink, 0o755, 0, "../target"),
+        Tar.Header("link/attack", :file, 0o644, 0, ""),
+    )
     # attempt to write through absolute link
-    tmp = mktempdir()
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, tmp))
-    Tar.write_header(io, Tar.Header("link/attack", :file, 0o644, 0, ""))
-    close(io)
-    @test_throws ErrorException Tar.extract(tarball)
-    @test_throws ErrorException Tar.tree_hash(tarball)
-    rm(tarball)
+    test_extract_attack(
+        Tar.Header("link", :symlink, 0o755, 0, tmpd),
+        Tar.Header("link/attack", :file, 0o644, 0, ""),
+    )
+    @test isempty(readdir(tmpd))
     # same attack with some obfuscation
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, tmp))
-    Tar.write_header(io, Tar.Header("./link/attack", :file, 0o644, 0, ""))
-    close(io)
-    @test_throws ErrorException Tar.extract(tarball)
-    @test_throws ErrorException Tar.tree_hash(tarball)
-    rm(tarball)
+    test_extract_attack(
+        Tar.Header("link", :symlink, 0o755, 0, tmpd),
+        Tar.Header("./link/attack", :file, 0o644, 0, ""),
+    )
+    @test isempty(readdir(tmpd))
     # same attack with different obfuscation
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("link", :symlink, 0o755, 0, tmp))
-    Tar.write_header(io, Tar.Header("dir/../link/attack", :file, 0o644, 0, ""))
-    close(io)
-    @test_throws ErrorException Tar.extract(tarball)
-    @test_throws ErrorException Tar.tree_hash(tarball)
-    rm(tarball)
-    # check temp dir is empty, remove it
-    @test isempty(readdir(tmp))
-    rm(tmp)
+    test_extract_attack(
+        Tar.Header("link", :symlink, 0o755, 0, tmpd),
+        Tar.Header("dir/../link/attack", :file, 0o644, 0, ""),
+    )
+    @test isempty(readdir(tmpd))
+    rm(tmpd)
 end
 
 @testset "overwrites" begin
