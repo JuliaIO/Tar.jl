@@ -1,7 +1,7 @@
 include("setup.jl")
 
 NON_STDLIB_TESTS &&
-@testset "ChaosBufferStream" begin
+@testset "unususal buffering" begin
     @testset "constant usage" begin
         io = BufferStream()
         cio = ChaosBufferStream(io; chunksizes=[17], sleepamnts=[0.001])
@@ -316,8 +316,36 @@ end
     rm(tarball)
 end
 
-@testset "symlink attacks" begin
+@testset "extract attacks" begin
     tmpd = mktempdir()
+    # attempt to extract relative path out of root
+    test_extract_attack(
+        Tar.Header("../file", :file, 0o644, 0, ""),
+    )
+    # attempt to extract relative path out of root (variation)
+    test_extract_attack(test_windows_variation,
+        # this is the same on UNIX but different on Windows
+        Tar.Header(joinpath("..", "file"), :file, 0o644, 0, ""),
+    )
+    # same attack with some obfuscation
+    test_extract_attack(
+        Tar.Header("dir/../../file", :file, 0o644, 0, ""),
+    )
+    # same attack with some obfuscation (variation)
+    test_extract_attack(test_windows_variation,
+        # this is the same on UNIX but different on Windows
+        Tar.Header(joinpath("dir", "..", "..", "file"), :file, 0o644, 0, ""),
+    )
+    # attempt to extract absolute path out of root
+    test_extract_attack(
+        Tar.Header("/tmp/file", :file, 0o644, 0, ""),
+    )
+    @test !ispath(joinpath(tmpd, "file"))
+    # attempt to extract absolute path out of root
+    test_extract_attack(test_windows_variation,
+        Tar.Header("$tmpd/file", :file, 0o644, 0, ""),
+    )
+    @test !ispath(joinpath(tmpd, "file"))
     # attempt to extract file into symlink directory (safe but not allowed)
     test_extract_attack(
         Tar.Header("dir", :directory, 0o755, 0, ""),
