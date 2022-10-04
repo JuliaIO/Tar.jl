@@ -55,9 +55,15 @@ function extract_tarball(
     copy_symlinks::Bool = false,
     set_permissions::Bool = true,
 )
+    root = normpath(root)
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         # get the file system version of the path
-        sys_path = reduce(joinpath, init=root, parts)
+        sys_path = isempty(parts) ? "." : reduce(joinpath, parts)
+        isabspath(sys_path) &&
+            error("attempt to extract absolute path at $(repr(sys_path)) from $(repr(hdr.path))")
+        sys_path = sys_path == "." ? root : normpath(root, sys_path)
+        startswith(sys_path, root) ||
+            error("attempt to extract relative path outside of root at $(repr(sys_path)) from $(repr(hdr.path))")
         src_path = joinpath(root, hdr.link)
         dir = dirname(sys_path)
         st = stat(dir)

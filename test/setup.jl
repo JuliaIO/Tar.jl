@@ -251,4 +251,33 @@ function test_error_prefix(f::Function, prefix::AbstractString)
     @test startswith(val.msg, prefix)
 end
 
+function test_extract_attack(body::Function, hdrs::Tar.Header...)
+    tarball, io = mktemp()
+    for hdr in hdrs
+        Tar.write_header(io, hdr)
+    end
+    close(io)
+    body(tarball)
+    rm(tarball)
+end
+
+function test_extract_attack(hdrs::Tar.Header...)
+    test_extract_attack(hdrs...) do tarball
+        @test_throws ErrorException Tar.extract(tarball)
+        @test_throws ErrorException Tar.rewrite(tarball)
+        @test_throws ErrorException Tar.tree_hash(tarball)
+    end
+end
+
+# This is for testing tarballs containing paths that have backslashes like
+# `C:\\dir` which is a valid path component on UNIX but should error upon
+# extraction on Windows. So it tests that `Tar.extract` fails everywhere but
+# allows `Tar.rewrite` and `Tar.tree_hash` to not fail on non-Windows systems.
+function test_windows_variation(tarball)
+    @test_throws ErrorException Tar.extract(tarball)
+    Sys.iswindows() && return
+    @test_throws ErrorException Tar.rewrite(tarball)
+    @test_throws ErrorException Tar.tree_hash(tarball)
+end
+
 const test_data_dir = joinpath(@__DIR__, "data")
