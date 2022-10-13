@@ -193,61 +193,56 @@ end
     len = 1234
     pad = mod(-len, 512)
     data = rand(UInt8, len)
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("file", :file, 0o644, len, ""))
-    write(io, data)
-    write(io, fill(0x0, pad))
-    close(io)
+    with_tarball(
+        Tar.Header("file", :file, 0o644, len, ""), data, fill(0x0, pad),
+    ) do tarball
+        @testset "tarball is well-formed" begin
+            @test Tar.list(tarball) == [Tar.Header("file", :file, 0o644, len, "")]
+            tmp = Tar.extract(tarball)
+            @test readdir(tmp) == ["file"]
+            @test read(joinpath(tmp, "file")) == data
+            rm(tmp, recursive=true)
+            tarball′ = Tar.rewrite(tarball)
+            @test read(tarball) == read(tarball′)
+            rm(tarball′)
+        end
 
-    @testset "tarball is well-formed" begin
-        @test Tar.list(tarball) == [Tar.Header("file", :file, 0o644, len, "")]
-        tmp = Tar.extract(tarball)
-        @test readdir(tmp) == ["file"]
-        @test read(joinpath(tmp, "file")) == data
-        rm(tmp, recursive=true)
-        tarball′ = Tar.rewrite(tarball)
-        @test read(tarball) == read(tarball′)
-        rm(tarball′)
-    end
-
-    @testset "trailing padding truncated" begin
-        for p in [pad-1, pad÷2, 1, 0]
-            open(tarball, "a") do io
-                truncate(io, 512 + len + p)
+        @testset "trailing padding truncated" begin
+            for p in [pad-1, pad÷2, 1, 0]
+                open(tarball, "a") do io
+                    truncate(io, 512 + len + p)
+                end
+                @test_throws_broken EOFError Tar.list(tarball)
+                @test_throws EOFError Tar.extract(tarball)
+                @test_throws EOFError Tar.tree_hash(tarball)
+                @test_throws_broken EOFError Tar.rewrite(tarball)
             end
-            @test_throws_broken EOFError Tar.list(tarball)
-            @test_throws EOFError Tar.extract(tarball)
-            @test_throws EOFError Tar.tree_hash(tarball)
-            @test_throws_broken EOFError Tar.rewrite(tarball)
+        end
+
+        @testset "file data truncated" begin
+            for d in [len÷2, 512, 0]
+                open(tarball, "a") do io
+                    truncate(io, 512 + d)
+                end
+                @test_throws_broken EOFError Tar.list(tarball)
+                @test_throws EOFError Tar.extract(tarball)
+                @test_throws EOFError Tar.tree_hash(tarball)
+                @test_throws EOFError Tar.rewrite(tarball)
+            end
+        end
+
+        @testset "header truncated" begin
+            for h in [511, 256, 1]
+                open(tarball, "a") do io
+                    truncate(io, h)
+                end
+                @test_throws EOFError Tar.list(tarball)
+                @test_throws EOFError Tar.extract(tarball)
+                @test_throws EOFError Tar.tree_hash(tarball)
+                @test_throws EOFError Tar.rewrite(tarball)
+            end
         end
     end
-
-    @testset "file data truncated" begin
-        for d in [len÷2, 512, 0]
-            open(tarball, "a") do io
-                truncate(io, 512 + d)
-            end
-            @test_throws_broken EOFError Tar.list(tarball)
-            @test_throws EOFError Tar.extract(tarball)
-            @test_throws EOFError Tar.tree_hash(tarball)
-            @test_throws EOFError Tar.rewrite(tarball)
-        end
-    end
-
-    @testset "header truncated" begin
-        for h in [511, 256, 1]
-            open(tarball, "a") do io
-                truncate(io, h)
-            end
-            @test_throws EOFError Tar.list(tarball)
-            @test_throws EOFError Tar.extract(tarball)
-            @test_throws EOFError Tar.tree_hash(tarball)
-            @test_throws EOFError Tar.rewrite(tarball)
-        end
-    end
-
-    # cleanup
-    rm(tarball)
 end
 
 if @isdefined(gtar)
@@ -285,35 +280,32 @@ end
 
 @testset "directory after contents" begin
     # create and hash a reference tarball
-    tarball, io = mktemp()
-    # executable files: hashing works on Windows + old Julia version
-    Tar.write_header(io, Tar.Header("dir/file", :file, 0o755, 0, ""))
-    Tar.write_header(io, Tar.Header("file", :file, 0o755, 0, ""))
-    close(io)
-    hash = Tar.tree_hash(tarball)
-    rm(tarball)
+    hash = with_tarball(Tar.tree_hash,
+        # executable files: hashing works on Windows + old Julia version
+        Tar.Header("dir/file", :file, 0o755, 0, ""),
+        Tar.Header("file", :file, 0o755, 0, ""),
+    )
     # create a version with directory entries after contents
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("file", :file, 0o755, 0, ""))
-    Tar.write_header(io, Tar.Header(".", :directory, 0o755, 0, ""))
-    Tar.write_header(io, Tar.Header("dir/file", :file, 0o755, 0, ""))
-    Tar.write_header(io, Tar.Header("dir", :directory, 0o755, 0, ""))
-    close(io)
-    # check extract
-    tree = Tar.extract(tarball)
-    check_tree_hash(hash, tree)
-    # check tree_hash
-    @test Tar.tree_hash(tarball) == hash
-    # check rewrite
-    tarball′ = Tar.rewrite(tarball)
-    @test Tar.list(tarball′) == [
-        Tar.Header("dir", :directory, 0o755, 0, "")
-        Tar.Header("dir/file", :file, 0o755, 0, "")
-        Tar.Header("file", :file, 0o755, 0, "")
-    ]
-    # cleanup
-    rm(tarball′)
-    rm(tarball)
+    with_tarball(
+        Tar.Header("file", :file, 0o755, 0, ""),
+        Tar.Header(".", :directory, 0o755, 0, ""),
+        Tar.Header("dir/file", :file, 0o755, 0, ""),
+        Tar.Header("dir", :directory, 0o755, 0, ""),
+    ) do tarball
+        # check extract
+        tree = Tar.extract(tarball)
+        check_tree_hash(hash, tree)
+        # check tree_hash
+        @test Tar.tree_hash(tarball) == hash
+        # check rewrite
+        tarball′ = Tar.rewrite(tarball)
+        @test Tar.list(tarball′) == [
+            Tar.Header("dir", :directory, 0o755, 0, "")
+            Tar.Header("dir/file", :file, 0o755, 0, "")
+            Tar.Header("file", :file, 0o755, 0, "")
+        ]
+        rm(tarball′)
+    end
 end
 
 @testset "extract attacks" begin
@@ -323,7 +315,7 @@ end
         Tar.Header("../file", :file, 0o644, 0, ""),
     )
     # attempt to extract relative path out of root (variation)
-    test_extract_attack(test_windows_variation,
+    with_tarball(test_windows_variation,
         # this is the same on UNIX but different on Windows
         Tar.Header(joinpath("..", "file"), :file, 0o644, 0, ""),
     )
@@ -332,7 +324,7 @@ end
         Tar.Header("dir/../../file", :file, 0o644, 0, ""),
     )
     # same attack with some obfuscation (variation)
-    test_extract_attack(test_windows_variation,
+    with_tarball(test_windows_variation,
         # this is the same on UNIX but different on Windows
         Tar.Header(joinpath("dir", "..", "..", "file"), :file, 0o644, 0, ""),
     )
@@ -342,7 +334,7 @@ end
     )
     @test !ispath(joinpath(tmpd, "file"))
     # attempt to extract absolute path out of root
-    test_extract_attack(test_windows_variation,
+    with_tarball(test_windows_variation,
         Tar.Header("$tmpd/file", :file, 0o644, 0, ""),
     )
     @test !ispath(joinpath(tmpd, "file"))
@@ -398,48 +390,41 @@ end
     end
     @testset "allow overwrites" begin
         for hdr₁ in hdrs, hdr₂ in hdrs
-            tarball₁, io = mktemp()
-            Tar.write_header(io, file)
-            Tar.write_header(io, hdr₁)
-            Tar.write_header(io, hdr₂)
-            close(io)
-            hash = Tar.tree_hash(tarball₁)
-            tree₁ = Tar.extract(tarball₁)
-            @test hash == tree_hash(tree₁)
-            tarball₂, io = mktemp()
-            Tar.write_header(io, file)
-            Tar.write_header(io, hdr₂)
-            close(io)
-            @test hash == Tar.tree_hash(tarball₂)
-            tree₂ = Tar.extract(tarball₂)
-            @test hash == tree_hash(tree₂)
-            rm(tree₁, recursive=true)
-            rm(tree₂, recursive=true)
-            rm(tarball₁)
-            rm(tarball₂)
+            with_tarball(file, hdr₁, hdr₂) do tarball₁
+                hash = Tar.tree_hash(tarball₁)
+                tree₁ = Tar.extract(tarball₁)
+                @test hash == tree_hash(tree₁)
+                rm(tree₁, recursive=true)
+                with_tarball(file, hdr₂) do tarball₂
+                    @test hash == Tar.tree_hash(tarball₂)
+                    tree₂ = Tar.extract(tarball₂)
+                    @test hash == tree_hash(tree₂)
+                    rm(tree₂, recursive=true)
+                end
+            end
         end
     end
     !Sys.iswindows() &&
     @testset "allow write into directory overwriting a symlink" begin
         # make sure "path" is removed from links set
-        tarball₁, io = mktemp()
-        Tar.write_header(io, Tar.Header("path", :symlink, 0o755, 0, tmp))
-        Tar.write_header(io, Tar.Header("path", :directory, 0o755, 0, ""))
-        Tar.write_header(io, Tar.Header("path/file", :file, 0o644, 0, ""))
-        close(io)
-        hash = Tar.tree_hash(tarball₁)
-        tree₁ = Tar.extract(tarball₁)
-        @test hash == tree_hash(tree₁)
-        tarball₂, io = mktemp()
-        Tar.write_header(io, Tar.Header("path/file", :file, 0o644, 0, ""))
-        close(io)
-        @test hash == Tar.tree_hash(tarball₂)
-        tree₂ = Tar.extract(tarball₂)
-        @test hash == tree_hash(tree₂)
-        rm(tree₁, recursive=true)
-        rm(tree₂, recursive=true)
-        rm(tarball₁)
-        rm(tarball₂)
+        with_tarball(
+            Tar.Header("path", :symlink, 0o755, 0, tmp),
+            Tar.Header("path", :directory, 0o755, 0, ""),
+            Tar.Header("path/file", :file, 0o644, 0, ""),
+        ) do tarball₁
+            hash = Tar.tree_hash(tarball₁)
+            tree₁ = Tar.extract(tarball₁)
+            @test hash == tree_hash(tree₁)
+            rm(tree₁, recursive=true)
+            with_tarball(
+                Tar.Header("path/file", :file, 0o644, 0, ""),
+            ) do tarball₂
+                @test hash == Tar.tree_hash(tarball₂)
+                tree₂ = Tar.extract(tarball₂)
+                @test hash == tree_hash(tree₂)
+                rm(tree₂, recursive=true)
+            end
+        end
     end
     # check temp dir is empty, remove it
     @test isempty(readdir(tmp))
@@ -583,7 +568,7 @@ end
     end
 
     # In this issue we've seen that symlinking a directory caused files inside
-    # the directory to become read-only.  Guard against Tar.jl doing something
+    # the directory to become read-only. Guard against Tar.jl doing something
     # weird like that.
     @testset "Issue Pkg#2185" begin
         mktempdir() do dir
@@ -1071,21 +1056,19 @@ end
     pad = mod(-len, 512)
     data = rand(UInt8, len)
     # create reference tarball
-    reference, io = mktemp()
-    Tar.write_header(io, Tar.Header("file", :file, 0o755, len, ""))
-    write(io, data)
-    write(io, fill(0x0, pad))
-    close(io)
-    hash = tree_hash(Tar.extract(reference))
-    # create tarball with self-referential hard link
-    tarball, io = mktemp()
-    Tar.write_header(io, Tar.Header("file", :file, 0o644, len, ""))
-    write(io, data)
-    write(io, fill(0x0, pad))
-    Tar.write_header(io, Tar.Header("file", :hardlink, 0o755, 0, "file"))
-    close(io)
-    # test that it behaves like the reference tarball
-    @test hash == Tar.tree_hash(tarball)
-    @test hash == tree_hash(Tar.extract(tarball))
-    @test read(reference) == read(Tar.rewrite(tarball))
+    with_tarball(
+        Tar.Header("file", :file, 0o755, len, ""), data, fill(0x0, pad),
+    ) do reference
+        hash = tree_hash(Tar.extract(reference))
+        # create tarball with self-referential hard link
+        with_tarball(
+            Tar.Header("file", :file, 0o644, len, ""), data, fill(0x0, pad),
+            Tar.Header("file", :hardlink, 0o755, 0, "file"),
+        ) do tarball
+            # test that it behaves like the reference tarball
+            @test hash == Tar.tree_hash(tarball)
+            @test hash == tree_hash(Tar.extract(tarball))
+            @test read(reference) == read(Tar.rewrite(tarball))
+        end
+    end
 end

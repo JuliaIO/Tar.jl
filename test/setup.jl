@@ -251,18 +251,31 @@ function test_error_prefix(f::Function, prefix::AbstractString)
     @test startswith(val.msg, prefix)
 end
 
-function test_extract_attack(body::Function, hdrs::Tar.Header...)
+function make_tarball(args::Union{Tar.Header, Vector{UInt8}}...)
     tarball, io = mktemp()
-    for hdr in hdrs
-        Tar.write_header(io, hdr)
+    try
+        for arg in args
+            if arg isa Tar.Header
+                Tar.write_header(io, arg)
+            else
+                write(io, arg)
+            end
+        end
+    finally
+        close(io)
     end
-    close(io)
-    body(tarball)
-    rm(tarball)
+    return tarball
+end
+
+function with_tarball(body::Function, args::Union{Tar.Header, Vector{UInt8}}...)
+    tarball = make_tarball(args...)
+    try body(tarball)
+    finally rm(tarball)
+    end
 end
 
 function test_extract_attack(hdrs::Tar.Header...)
-    test_extract_attack(hdrs...) do tarball
+    with_tarball(hdrs...) do tarball
         @test_throws ErrorException Tar.extract(tarball)
         @test_throws ErrorException Tar.rewrite(tarball)
         @test_throws ErrorException Tar.tree_hash(tarball)
