@@ -293,4 +293,10 @@ function test_windows_variation(tarball)
     @test_throws ErrorException Tar.tree_hash(tarball)
 end
 
+# TODO: handle properly (fail if error, pass if no error)
+# This should really be part off the Test stdlib
+macro test_no_throw(ex)
+    esc(ex)
+end
+
 const test_data_dir = joinpath(@__DIR__, "data")

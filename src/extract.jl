@@ -57,6 +57,7 @@ function extract_tarball(
 )
     root = normpath(root)
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
+        Sys.iswindows() && check_windows_path(hdr.path, parts)
         # get the file system version of the path
         sys_path = isempty(parts) ? "." : reduce(joinpath, parts)
         isabspath(sys_path) &&

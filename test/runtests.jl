@@ -520,6 +520,55 @@ end
     rm(tmp)
 end
 
+@testset "bad Windows paths" begin
+    # test that we catch bad/illegal Windows names
+    bad = [
+        "c:", "\\", "D:\\tmp", "*.*", "\1.txt",
+        "PRN", "LPT1", "lpt2", "LpT3", "Com9",
+        "CON.txt", "PRN.∀", "\xba\xdd",
+    ]
+    for name in bad
+        with_tarball(Tar.Header(name, :file, 0o644, 0, "")) do tarball
+            @test_no_throw Tar.rewrite(tarball)
+            @test_no_throw Tar.rewrite(tarball, portable=false)
+            @test_throws ErrorException Tar.rewrite(tarball, portable=true)
+            # Windows can't extract bad names (that's the whole point)
+            Sys.iswindows() && return # continue
+            if !isvalid(name)
+                # MacOS doesn't allow invalid UTF-8 path names
+                Sys.isapple() && return
+                # older Julia versions don't like invalid paths
+                VERSION < v"1.7" && return
+            end
+            for sk in [nothing, tempname()]
+                dir = Tar.extract(tarball, skeleton=sk)
+                @test_no_throw Tar.create(dir, skeleton=sk)
+                @test_no_throw Tar.create(dir, skeleton=sk, portable=false)
+                @test_throws ErrorException Tar.create(dir, skeleton=sk, portable=true)
+                rm(dir, recursive=true)
+            end
+        end
+    end
+    # test that we don't catch too much
+    fine = [
+        "c;", "÷", "D;÷tmp", "+.+", "1.txt",
+        ".PRN", "LPT0", "𝕃pt2", " LpT3", "Com",
+        "CON⋅txt", "PRN-", "\xdd\xba",
+    ]
+    for name in fine
+        with_tarball(Tar.Header(name, :file, 0o644, 0, "")) do tarball
+            @test_no_throw Tar.rewrite(tarball, portable = false)
+            @test_no_throw Tar.rewrite(tarball, portable = true)
+            for sk in [nothing, tempname()]
+                dir = Tar.extract(tarball, skeleton=sk)
+                @test_no_throw Tar.create(dir, skeleton=sk, portable=false)
+                @test_no_throw Tar.create(dir, skeleton=sk, portable=true)
+                rm(dir, recursive=true)
+            end
+        end
+    end
+end
+
 @testset "API: create" begin
     local bytes
 
@@ -586,7 +635,8 @@ end
             tarball = Tar.create(root, joinpath(dir, "test.tar"))
             files = Tar.list(tarball)
             # Make sure the file and the symlink have the expected permissions.
-            # Note: in old versions of Julia, the file has always permission 755 on Windows
+            # Note: in old versions of Julia, the file has always permission 755
+            # on Windows
             @test Tar.Header(replace(file, "\\" => "/"), :file, VERSION ≤ v"1.6.0-DEV.1683" && Sys.iswindows() ? 0o755 : file_mode, 0, "") in files
             @test Tar.Header(replace(link, "\\" => "/"), :symlink, dir_mode, 0, basename(target)) in files
         end
