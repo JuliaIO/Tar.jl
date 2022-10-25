@@ -727,7 +727,7 @@ function read_data(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
 )::Nothing
-    open(file, write=true) do file′
+    open(file, create=true, write=true) do file′
         read_data(tar, file′, size=size, buf=buf, tee=tee)
     end
 end
