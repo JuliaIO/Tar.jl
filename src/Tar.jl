@@ -54,12 +54,16 @@ include("extract.jl")
 ## official API: create, list, extract, rewrite, tree_hash
 
 """
-    create([ predicate, ] dir, [ tarball ]; [ skeleton ]) -> tarball
+    create(
+        [ predicate, ] dir, [ tarball ];
+        [ skeleton, ] [ portable = false ]
+    ) -> tarball
 
         predicate :: String --> Bool
         dir       :: AbstractString
         tarball   :: Union{AbstractString, AbstractCmd, IO}
         skeleton  :: Union{AbstractString, AbstractCmd, IO}
+        portable  :: Bool
 
 Create a tar archive ("tarball") of the directory `dir`. The resulting archive
 is written to the path `tarball` or if no path is specified, a temporary path is
@@ -77,17 +81,22 @@ a "skeleton" to generate the tarball. You create a skeleton file by passing the
 `skeleton` keyword to the `extract` command. If `create` is called with that
 skeleton file and the extracted files haven't changed, an identical tarball is
 recreated. The `skeleton` and `predicate` arguments cannot be used together.
+
+If the `portable` flag is true then path names are checked for validity on
+Windows, which ensures that they don't contain illegal characters or have names
+that are reserved. See https://stackoverflow.com/a/31976060/659248 for details.
 """
 function create(
     predicate::Function,
     dir::AbstractString,
     tarball::Union{ArgWrite, Nothing} = nothing;
     skeleton::Union{ArgRead, Nothing} = nothing,
+    portable::Bool = false,
 )
     check_create_dir(dir)
     if skeleton === nothing
         arg_write(tarball) do tar
-            create_tarball(predicate, tar, dir)
+            create_tarball(predicate, tar, dir, portable=portable)
         end
     else
         predicate === true_predicate ||
@@ -95,7 +104,7 @@ function create(
         check_create_skeleton(skeleton)
         arg_read(skeleton) do skeleton
             arg_write(tarball) do tar
-                recreate_tarball(tar, dir, skeleton)
+                recreate_tarball(tar, dir, skeleton, portable=portable)
             end
         end
     end
@@ -105,8 +114,9 @@ function create(
     dir::AbstractString,
     tarball::Union{ArgWrite, Nothing} = nothing;
     skeleton::Union{ArgRead, Nothing} = nothing,
+    portable::Bool = false,
 )
-    create(true_predicate, dir, tarball, skeleton=skeleton)
+    create(true_predicate, dir, tarball, skeleton=skeleton, portable=portable)
 end
 
 """
@@ -261,11 +271,15 @@ function extract(
 end
 
 """
-    rewrite([ predicate, ], old_tarball, [ new_tarball ]) -> new_tarball
+    rewrite(
+        [ predicate, ] old_tarball, [ new_tarball ];
+        [ portable = false, ]
+    ) -> new_tarball
 
         predicate   :: Header --> Bool
         old_tarball :: Union{AbstractString, AbtractCmd, IO}
         new_tarball :: Union{AbstractString, AbtractCmd, IO}
+        portable    :: Bool
 
 Rewrite `old_tarball` to the standard format that `create` generates, while also
 checking that it doesn't contain anything that would cause `extract` to raise an
@@ -289,25 +303,31 @@ remove `.` entries and replace multiple consecutive slashes with a single slash.
 If the entry has type `:hardlink`, the link target path is normalized the same
 way so that it will match the path of the target entry; the size field is set to
 the size of the target path (which must be an already-seen file).
+
+If the `portable` flag is true then path names are checked for validity on
+Windows, which ensures that they don't contain illegal characters or have names
+that are reserved. See https://stackoverflow.com/a/31976060/659248 for details.
 """
 function rewrite(
     predicate::Function,
     old_tarball::ArgRead,
-    new_tarball::Union{ArgWrite, Nothing} = nothing,
+    new_tarball::Union{ArgWrite, Nothing} = nothing;
+    portable::Bool = false,
 )
     old_tarball = check_rewrite_old_tarball(old_tarball)
     arg_read(old_tarball) do old_tar
         arg_write(new_tarball) do new_tar
-            rewrite_tarball(predicate, old_tar, new_tar)
+            rewrite_tarball(predicate, old_tar, new_tar, portable=portable)
         end
     end
 end
 
 function rewrite(
     old_tarball::ArgRead,
-    new_tarball::Union{ArgWrite, Nothing} = nothing,
+    new_tarball::Union{ArgWrite, Nothing} = nothing;
+    portable::Bool = false,
 )
-    rewrite(true_predicate, old_tarball, new_tarball)
+    rewrite(true_predicate, old_tarball, new_tarball, portable=portable)
 end
 
 """
@@ -460,5 +480,37 @@ check_tree_hash_tarball(tarball::AbstractString) =
     """)
 
 check_tree_hash_tarball(tarball::ArgRead) = nothing
+
+const Str = Union{String, SubString{String}}
+
+# Special names on Windows: CON PRN AUX NUL COM1-9 LPT1-9
+# we spell out uppercase/lowercase because of locales
+const WIN_SPECIAL_NAMES = r"^(
+    [Cc][Oo][Nn] |
+    [Pp][Rr][Nn] |
+    [Aa][Uu][Xx] |
+    [Nn][Uu][Ll] |
+  ( [Cc][Oo][Mm] |
+    [Ll][Pp][Tt] )[1-9]
+)(\.|$)"x
+
+function check_windows_path(
+    path  :: AbstractString,
+    parts :: AbstractVector{<:Str} = split(path, r"/+"),
+)
+    for part in parts
+        isempty(part) && continue
+        if !isvalid(part)
+            error("invalid Unicode: $(repr(part)) in $(repr(path))")
+        end
+        for ch in part
+            ch < ' ' || ch ∈ "\"*:<>?\\|" || continue
+            error("illegal Windows char: $(repr(ch)) in $(repr(path))")
+        end
+        if occursin(WIN_SPECIAL_NAMES, part)
+            error("reserved Windows name: $(repr(part)) in $(repr(path))")
+        end
+    end
+end
 
 end # module

@@ -3,8 +3,10 @@ function create_tarball(
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    portable::Bool = false,
 )
     write_tarball(tar, root, buf=buf) do sys_path, tar_path
+        portable && check_windows_path(tar_path)
         hdr = path_header(sys_path, tar_path)
         hdr.type != :directory && return hdr, sys_path
         paths = Dict{String,String}()
@@ -22,6 +24,7 @@ function recreate_tarball(
     root::String,
     skeleton::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    portable::Bool = false,
 )
     check_skeleton_header(skeleton, buf=buf)
     globals = Dict{String,String}()
@@ -29,6 +32,7 @@ function recreate_tarball(
         hdr = read_header(skeleton, globals=globals, buf=buf, tee=tar)
         hdr === nothing && break
         check_header(hdr)
+        portable && check_windows_path(hdr.path)
         sys_path = joinpath(root, hdr.path)
         if hdr.type == :file
             write_data(tar, sys_path, size=hdr.size, buf=buf)
@@ -41,9 +45,11 @@ function rewrite_tarball(
     old_tar::IO,
     new_tar::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+    portable::Bool = false,
 )
     tree = Dict{String,Any}()
     read_tarball(predicate, old_tar; buf=buf) do hdr, parts
+        portable && check_windows_path(hdr.path, parts)
         isempty(parts) && return
         node = tree
         name = pop!(parts)
@@ -137,6 +143,12 @@ function write_header(
     path = hdr.path
     size = hdr.size
     link = hdr.link
+
+    # check for NULs
+    0x0 in codeunits(path) &&
+        throw(ArgumentError("path contains NUL bytes: $(repr(path))"))
+    0x0 in codeunits(link) &&
+        throw(ArgumentError("link contains NUL bytes: $(repr(path))"))
 
     # determine if an extended header is needed
     extended = Pair{String,String}[]
