@@ -138,7 +138,7 @@ function extract_tarball(
     copies = Pair{String,String}[]
     for (path, what) in paths
         what isa AbstractString || continue
-        push!(copies, path => what)
+        push!(copies, path => String(what)::String)
     end
     sort!(copies, by=last)
 
