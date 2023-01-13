@@ -46,6 +46,21 @@ function iterate_headers(
     end
 end
 
+# follow chains of symlinks
+follow_symlink_chain(seen::Vector, what::Any, paths) = what == :symlink ? what : seen[end]
+follow_symlink_chain(seen::Vector, what::String, paths) = what in seen ? :symlink : follow_symlink_chain(push!(seen, what), paths[what], paths)
+
+ # our `cp` doesn't copy ACL properties, so manually set them via `chmod`
+ function copy_mode(src::String, dst::String)
+    chmod(dst, filemode(src))
+    isdir(dst) || return
+    for name in readdir(dst)
+        sub_src = joinpath(src, name)
+        sub_dst = joinpath(dst, name)
+        copy_mode(sub_src, sub_dst)
+    end
+end
+
 function extract_tarball(
     predicate::Function,
     tar::IO,
@@ -114,21 +129,16 @@ function extract_tarball(
         paths[path] = something(target, :symlink)
     end
 
-    # follow chains of symlinks
-    follow(seen::Vector, what::Any) =
-        what == :symlink ? what : seen[end]
-    follow(seen::Vector, what::String) =
-        what in seen ? :symlink : follow(push!(seen, what), paths[what])
     for (path, what) in paths
         what isa AbstractString || continue
-        paths[path] = follow([path], what)
+        paths[path] = follow_symlink_chain([path], what, paths)
     end
 
     # copies that need to be made
     copies = Pair{String,String}[]
     for (path, what) in paths
         what isa AbstractString || continue
-        push!(copies, path => what)
+        push!(copies, path => String(what)::String)
     end
     sort!(copies, by=last)
 
@@ -148,16 +158,6 @@ function extract_tarball(
                 dst = reduce(joinpath, init=root, split(path, '/'))
                 cp(src, dst)
                 if set_permissions && Sys.iswindows()
-                    # our `cp` doesn't copy ACL properties, so manually set them via `chmod`
-                    function copy_mode(src::String, dst::String)
-                        chmod(dst, filemode(src))
-                        isdir(dst) || return
-                        for name in readdir(dst)
-                            sub_src = joinpath(src, name)
-                            sub_dst = joinpath(dst, name)
-                            copy_mode(sub_src, sub_dst)
-                        end
-                    end
                     copy_mode(src, dst)
                 end
             end
