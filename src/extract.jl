@@ -285,7 +285,15 @@ function git_object_hash(
     kind::AbstractString,
     HashType::DataType,
 )
-    ctx = HashType()
+    # re-dispatch over function barrier to avoid propagating invalidations due to uninferred 
+    # `ctx = HashType()`
+    git_object_hash(emit, kind, HashType())
+end
+function git_object_hash(
+    emit::Function,
+    kind::AbstractString,
+    ctx::SHA_CTX,
+)   
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
     SHA.update!(ctx, body)
@@ -298,7 +306,16 @@ function git_file_hash(
     HashType::DataType;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
-    ctx = HashType()
+    # re-dispatch over function barrier to avoid propagating invalidations due to uninferred 
+    # `ctx = HashType()`
+    git_file_hash(tar, size, HashType(); buf)
+end
+function git_file_hash(
+    tar::IO,
+    size::Integer,
+    ctx::SHA_CTX;
+    buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
+)
     SHA.update!(ctx, codeunits("blob $size\0"))
     # TODO: this largely duplicates the logic of read_data
     # read_data could be used directly if SHA offered an interface
