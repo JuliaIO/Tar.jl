@@ -287,12 +287,12 @@ function git_object_hash(
 )
     # re-dispatch over function barrier to avoid propagating invalidations due to uninferred 
     # `ctx = HashType()`
-    git_object_hash(emit, kind, HashType())
+    git_object_hash(emit, kind, HashType()::SHA.SHA_CTX)
 end
 function git_object_hash(
     emit::Function,
     kind::AbstractString,
-    ctx::SHA_CTX,
+    ctx::SHA.SHA_CTX,
 )   
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
@@ -308,12 +308,12 @@ function git_file_hash(
 )
     # re-dispatch over function barrier to avoid propagating invalidations due to uninferred 
     # `ctx = HashType()`
-    git_file_hash(tar, size, HashType(); buf)
+    git_file_hash(tar, size, HashType()::SHA.SHA_CTX; buf)
 end
 function git_file_hash(
     tar::IO,
     size::Integer,
-    ctx::SHA_CTX;
+    ctx::SHA.SHA_CTX;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     SHA.update!(ctx, codeunits("blob $size\0"))
