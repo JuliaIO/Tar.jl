@@ -308,7 +308,7 @@ function git_file_hash(
 )
     # re-dispatch over function barrier to avoid propagating invalidations due to uninferred 
     # `ctx = HashType()`
-    git_file_hash(tar, size, HashType()::SHA.SHA_CTX; buf)
+    git_file_hash(tar, size, HashType()::SHA.SHA_CTX; buf=buf)
 end
 function git_file_hash(
     tar::IO,
