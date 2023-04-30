@@ -461,7 +461,7 @@ When using Julia versions prior to 1.6 on Windows, support for querying and
 setting the executable bit is broken, so all files are created as executable.
 Julia versions 1.6 and greater can correctly read and write executable
 permissions using Windows ACLs, so tarballs created and extracted on Windows
-should have apprpriate permissions.
+should have appropriate permissions.
 
 In the future, optional support may be added for recording or restoring exact
 permission modes to the extent that such permissions are supported on those
