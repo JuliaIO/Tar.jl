@@ -208,10 +208,10 @@ end
 function git_tree_hash(
     predicate::Function,
     tar::IO,
-    HashType::DataType,
+    ::Type{HashType},
     skip_empty::Bool;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
+) where HashType
     # build tree with leaves for files and symlinks
     tree = Dict{String,Any}()
     read_tarball(predicate, tar; buf=buf) do hdr, parts
