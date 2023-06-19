@@ -717,7 +717,10 @@ function read_data(
         size -= write(file, view(buf, 1:Int(min(read_len, size))))
         padded_size -= read_len
     end
-    @assert size == padded_size == 0
+    @assert size == padded_size == 0 """
+                                     size == padded_size == 0
+                                     This error sometimes is a symptom of insufficient storage, make sure you have enough space on disk.
+                                     """
     return
 end
 
