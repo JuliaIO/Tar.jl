@@ -718,9 +718,9 @@ function read_data(
         padded_size -= read_len
     end
     @assert size == padded_size == 0 """
-                                     size == padded_size == 0
-                                     This error sometimes is a symptom of insufficient storage, make sure you have enough space on disk.
-                                     """
+        size == padded_size == 0
+        This error may be a symptom of insufficient disk space on the device the tarball is being written to.
+        """
     return
 end
 
