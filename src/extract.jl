@@ -717,7 +717,10 @@ function read_data(
         size -= write(file, view(buf, 1:Int(min(read_len, size))))
         padded_size -= read_len
     end
-    @assert size == padded_size == 0
+    @assert size == padded_size == 0 """
+        size == padded_size == 0
+        This error may be a symptom of insufficient disk space on the device the tarball is being written to.
+        """
     return
 end
 
