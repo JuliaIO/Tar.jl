@@ -334,8 +334,9 @@ function check_skeleton_header(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     hdr = read_standard_header(skeleton, buf=buf)
-    hdr.type == :g && hdr.path == SKELETON_MAGIC ||
+    if hdr === nothing || !(hdr.type == :g && hdr.path == SKELETON_MAGIC)
         error("not a skeleton file: $skeleton")
+    end
     skip_data(skeleton, hdr.size)
 end
 
