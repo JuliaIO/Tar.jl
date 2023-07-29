@@ -36,7 +36,7 @@ end
 
 Calculate the git blob hash of a given path.
 """
-function blob_hash(::Type{HashType}, path::AbstractString) where HashType
+function blob_hash(::Type{HashType}, path::AbstractString) where HashType <: SHA.SHA_CTX
     ctx = HashType()
     if islink(path)
         datalen = length(readlink(path))
@@ -96,7 +96,7 @@ end
 
 Calculate the git tree hash of a given path.
 """
-function tree_hash(::Type{HashType}, root::AbstractString) where HashType
+function tree_hash(::Type{HashType}, root::AbstractString) where HashType <: SHA.SHA_CTX
     entries = Tuple{String, Vector{UInt8}, GitMode}[]
     for f in readdir(root)
         # Skip `.git` directories

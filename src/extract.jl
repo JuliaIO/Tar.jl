@@ -1,5 +1,3 @@
-import SHA
-
 function iterate_headers(
     callback::Function,
     tar::IO;
@@ -211,7 +209,7 @@ function git_tree_hash(
     ::Type{HashType},
     skip_empty::Bool;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-) where HashType
+) where HashType <: SHA.SHA_CTX
     # build tree with leaves for files and symlinks
     tree = Dict{String,Any}()
     read_tarball(predicate, tar; buf=buf) do hdr, parts
@@ -284,7 +282,7 @@ function git_object_hash(
     emit::Function,
     kind::AbstractString,
     ::Type{HashType},
-) where HashType
+) where HashType <: SHA.SHA_CTX
     ctx = HashType()
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
@@ -297,7 +295,7 @@ function git_file_hash(
     size::Integer,
     ::Type{HashType};
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-) where HashType
+) where HashType <: SHA.SHA_CTX
     ctx = HashType()
     SHA.update!(ctx, codeunits("blob $size\0"))
     # TODO: this largely duplicates the logic of read_data
