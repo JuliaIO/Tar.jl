@@ -121,7 +121,7 @@ function check_header(hdr::Header)
         err("negative file size")
     isempty(errors) && return
 
-    # contruct error message
+    # construct error message
     if length(errors) == 1
         msg = errors[1] * "\n"
     else

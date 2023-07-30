@@ -10,7 +10,7 @@ Base.string(mode::GitMode) = string(UInt32(mode); base=8)
 Base.print(io::IO, mode::GitMode) = print(io, string(mode))
 
 function gitmode(path::AbstractString)
-    # Windows doens't deal with executable permissions in quite the same way,
+    # Windows doesn't deal with executable permissions in quite the same way,
     # `stat()` gives a different answer than we actually want, so we use
     # `isexecutable()` which uses `uv_fs_access()` internally.  On other
     # platforms however, we just want to check via `stat()`.
@@ -107,7 +107,7 @@ function tree_hash(::Type{HashType}, root::AbstractString) where HashType <: SHA
         filepath = abspath(root, f)
         mode = gitmode(filepath)
         if mode == mode_dir
-            # git skips emtpy directories, this doesn't
+            # git skips empty directories, this doesn't
             hash = tree_hash(HashType, filepath)
         else
             hash = blob_hash(HashType, filepath)

@@ -280,8 +280,8 @@ end
     ) -> new_tarball
 
         predicate   :: Header --> Bool
-        old_tarball :: Union{AbstractString, AbtractCmd, IO}
-        new_tarball :: Union{AbstractString, AbtractCmd, IO}
+        old_tarball :: Union{AbstractString, AbstractCmd, IO}
+        new_tarball :: Union{AbstractString, AbstractCmd, IO}
         portable    :: Bool
 
 Rewrite `old_tarball` to the standard format that `create` generates, while also
