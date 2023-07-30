@@ -947,6 +947,14 @@ end
         skeleton = tempname()
         dir = Tar.extract(tarball, skeleton=skeleton)
         @test isfile(skeleton)
+        # test that an empty tarball fails
+        truncated = tempname()
+        write(truncated, zeros(1024))
+        arg_readers(truncated) do skel
+            @arg_test skel begin
+                @test_throws ErrorException Tar.create(dir, skeleton=skel)
+            end
+        end
         # test skeleton listing
         hdrs = Tar.list(tarball)
         arg_readers(skeleton) do skel

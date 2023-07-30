@@ -1,5 +1,6 @@
 module Tar
 
+import SHA
 using ArgTools
 
 const true_predicate = _ -> true
