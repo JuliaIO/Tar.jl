@@ -1,5 +1,3 @@
-import SHA
-
 function iterate_headers(
     callback::Function,
     tar::IO;
@@ -208,10 +206,10 @@ end
 function git_tree_hash(
     predicate::Function,
     tar::IO,
-    HashType::DataType,
+    ::Type{HashType},
     skip_empty::Bool;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
+) where HashType <: SHA.SHA_CTX
     # build tree with leaves for files and symlinks
     tree = Dict{String,Any}()
     read_tarball(predicate, tar; buf=buf) do hdr, parts
@@ -283,8 +281,8 @@ end
 function git_object_hash(
     emit::Function,
     kind::AbstractString,
-    HashType::DataType,
-)
+    ::Type{HashType},
+) where HashType <: SHA.SHA_CTX
     ctx = HashType()
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
@@ -295,9 +293,9 @@ end
 function git_file_hash(
     tar::IO,
     size::Integer,
-    HashType::DataType;
+    ::Type{HashType};
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
+) where HashType <: SHA.SHA_CTX
     ctx = HashType()
     SHA.update!(ctx, codeunits("blob $size\0"))
     # TODO: this largely duplicates the logic of read_data
@@ -334,8 +332,9 @@ function check_skeleton_header(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
     hdr = read_standard_header(skeleton, buf=buf)
-    hdr.type == :g && hdr.path == SKELETON_MAGIC ||
+    if hdr === nothing || !(hdr.type == :g && hdr.path == SKELETON_MAGIC)
         error("not a skeleton file: $skeleton")
+    end
     skip_data(skeleton, hdr.size)
 end
 
@@ -717,7 +716,10 @@ function read_data(
         size -= write(file, view(buf, 1:Int(min(read_len, size))))
         padded_size -= read_len
     end
-    @assert size == padded_size == 0
+    @assert size == padded_size == 0 """
+        size == padded_size == 0
+        This error may be a symptom of insufficient disk space on the device the tarball is being written to.
+        """
     return
 end
 

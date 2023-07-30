@@ -1,5 +1,6 @@
 module Tar
 
+import SHA
 using ArgTools
 
 const true_predicate = _ -> true
@@ -395,14 +396,17 @@ function tree_hash(
     algorithm::AbstractString = "git-sha1",
     skip_empty::Bool = false,
 )
-    HashType =
-        algorithm == "git-sha1"   ? SHA.SHA1_CTX :
-        algorithm == "git-sha256" ? SHA.SHA256_CTX :
-            error("invalid tree hashing algorithm: $algorithm")
-
     check_tree_hash_tarball(tarball)
-    arg_read(tarball) do tar
-        git_tree_hash(predicate, tar, HashType, skip_empty)
+    if algorithm == "git-sha1"
+        return arg_read(tarball) do tar
+            git_tree_hash(predicate, tar, SHA.SHA1_CTX, skip_empty)
+        end
+    elseif algorithm == "git-sha256"
+        return arg_read(tarball) do tar
+            git_tree_hash(predicate, tar, SHA.SHA256_CTX, skip_empty)
+        end
+    else
+        error("invalid tree hashing algorithm: $algorithm")
     end
 end
 

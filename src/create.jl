@@ -249,8 +249,8 @@ function write_standard_header(
         throw(ArgumentError("non-ASCII type flag value: $(repr(type))"))
 
     # construct header block
-    data = view(buf, 1:512)
-    h = IOBuffer(fill!(data, 0x00), write=true, truncate=false)
+    buf[1:512] .= 0x00
+    h = IOBuffer(buf, write=true, truncate=false)
     write(h, name)              # name
     seek(h, 100)
     write(h, "$m \0")           # mode
@@ -282,16 +282,18 @@ function write_standard_header(
     write(h, "000000 \0")       # devminor
     @assert position(h) == 345
     write(h, prefix)            # prefix
+    @assert position(h) <= 512
 
-    # fix the checksum
-    c = string(sum(data), base=8, pad=6)
-    @assert ncodeunits(c) ≤ 6
+    # fix header block checksum
+    b = view(buf, 1:512)
+    c = string(sum(b), base=8, pad=6)
+    @assert ncodeunits(c) <= 6
     seek(h, 148)
     write(h, "$c\0 ")
     @assert position(h) == 156
 
-    # write header
-    w = write(tar, data)
+    # write header block
+    w = write(tar, b)
     @assert w == 512
     return w
 end
