@@ -1,3 +1,7 @@
+```@meta
+EditURL = "https://github.com/JuliaIO/Tar.jl/blob/master/docs/src/index.md"
+```
+
 # Tar
 
 ```@docs
