@@ -207,7 +207,8 @@ function git_tree_hash(
     predicate::Function,
     tar::IO,
     ::Type{HashType},
-    skip_empty::Bool;
+    skip_empty::Bool,
+    skip_symlink::Bool = false;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 ) where HashType <: SHA.SHA_CTX
     # build tree with leaves for files and symlinks
@@ -229,6 +230,7 @@ function git_tree_hash(
             end
             return
         elseif hdr.type == :symlink
+            skip_symlink && return
             mode = "120000"
             hash = git_object_hash("blob", HashType) do io
                 write(io, hdr.link)
