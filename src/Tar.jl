@@ -423,6 +423,32 @@ function tree_hash(
     )
 end
 
+"""
+    has_symlink(tarball; [ strict = true ]) -> Bool
+
+        callback  :: Header, [ <data> ] --> Any
+        tarball   :: Union{AbstractString, AbstractCmd, IO}
+        strict    :: Bool
+
+Checks the contents of a tar archive ("tarball") located at the path `tarball`
+for symlinks. If `tarball` is an IO handle, read the tar contents from that
+stream. If a symlink is found within the tar archive, true will be returned.
+Otherwise, false will be returned.
+"""
+function has_symlink(
+    tarball::ArgRead;
+    raw::Bool = false,
+    strict::Bool = !raw,
+)
+    has_symlink = false
+    list(tarball; raw, strict) do header
+        if header.type == :symlink
+            has_symlink = true
+        end
+    end
+    return has_symlink
+end
+
 ## error checking utility functions
 
 check_create_dir(dir::AbstractString) =

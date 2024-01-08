@@ -50,6 +50,7 @@ end
         @test isfile(skel)
         @test Tar.list(skel) == Tar.Header[]
         @test Tar.list(skel, raw=true) == Tar.Header[]
+        @test !Tar.has_symlink(skel)
         rm(skel)
     end
 
@@ -59,6 +60,7 @@ end
         rm(dir, recursive=true)
         @test Tar.list(tarball) == [Tar.Header(".", :directory, 0o755, 0, "")]
         @test Tar.list(tarball, raw=true) == [Tar.Header(".", :directory, 0o755, 0, "")]
+        @test !Tar.has_symlink(tarball)
         test_empty_hashes(tarball)
         skel = tempname()
         dir = Tar.extract(tarball, skeleton=skel)
@@ -110,6 +112,7 @@ end
                 @test !isempty(hdr.link)
             end
         end
+        @test Tar.has_symlink(tarball)
         @testset "Tar.list from IO, process, pipeline" begin
             arg_readers(tarball) do tar
                 @arg_test tar begin
@@ -1016,6 +1019,7 @@ end
         hdr = Tar.Header("LF10/LF10_B.mtx", :file, 0o100600, 367, "")
         @test open(Tar.read_header, tarball) == hdr
         @test Tar.list(tarball) == [hdr]
+        @test !Tar.has_symlink(tarball)
     end
     @testset "header errors" begin
         # generate a valid header
