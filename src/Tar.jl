@@ -426,7 +426,6 @@ end
 """
     has_symlink(tarball; [ strict = true ]) -> Bool
 
-        callback  :: Header, [ <data> ] --> Any
         tarball   :: Union{AbstractString, AbstractCmd, IO}
         strict    :: Bool
 
@@ -434,6 +433,8 @@ Checks the contents of a tar archive ("tarball") located at the path `tarball`
 for symlinks. If `tarball` is an IO handle, read the tar contents from that
 stream. If a symlink is found within the tar archive, true will be returned.
 Otherwise, false will be returned.
+
+See [`list`](@ref) regarding `strict`.
 """
 function has_symlink(
     tarball::ArgRead;
@@ -441,7 +442,7 @@ function has_symlink(
     strict::Bool = !raw,
 )
     has_symlink = false
-    list(tarball; raw, strict) do header
+    list(tarball; raw = raw, strict = strict) do header
         if header.type == :symlink
             has_symlink = true
         end
