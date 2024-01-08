@@ -96,10 +96,11 @@ end
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha256", copy_symlinks=true)
         end
         NON_STDLIB_TESTS && begin
-            open(GzipDecompressorStream, "data/iso_codes.v4.11.0.any.tar.gz") do io
+            iso_codes_tarball = Downloads.download("https://github.com/JuliaBinaryWrappers/iso_codes_jll.jl/releases/download/iso_codes-v4.11.0+0/iso_codes.v4.11.0.any.tar.gz")
+            open(GzipDecompressorStream, iso_codes_tarball) do io
                 @test Tar.tree_hash(io) == "71f68a3d55d73f2e15a3969c241fae2349b1feb5"
             end
-            open(GzipDecompressorStream, "data/iso_codes.v4.11.0.any.tar.gz") do io
+            open(GzipDecompressorStream, iso_codes_tarball) do io
                 @test Tar.tree_hash(io; copy_symlinks=true) == "409d6ac4c02dae43ff4fe576b5c5820d0386fb3f"
             end
         end
