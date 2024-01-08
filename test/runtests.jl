@@ -83,11 +83,17 @@ end
     @testset "Tar.tree_hash" begin
         arg_readers(tarball) do tar
             @arg_test tar @test Tar.tree_hash(tar) == hash
+            @arg_test tar @test Tar.tree_hash(tar; copy_symlinks=true) != hash
             @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar)
+            @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar; copy_symlinks=true)
             @arg_test tar @test empty_tree_sha1 ==
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha1")
+            @arg_test tar @test empty_tree_sha1 ==
+                Tar.tree_hash(hdr->false, tar, algorithm="git-sha1", copy_symlinks=true)
             @arg_test tar @test empty_tree_sha256 ==
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha256")
+            @arg_test tar @test empty_tree_sha256 ==
+                Tar.tree_hash(hdr->false, tar, algorithm="git-sha256", copy_symlinks=true)
         end
     end
     @testset "Tar.list & check properties" begin
