@@ -45,11 +45,14 @@ function iterate_headers(
 end
 
 # follow chains of symlinks
-follow_symlink_chain(seen::Vector, what::Any, paths) = what == :symlink ? what : seen[end]
-follow_symlink_chain(seen::Vector, what::String, paths) = what in seen ? :symlink : follow_symlink_chain(push!(seen, what), paths[what], paths)
+follow_symlink_chain(seen::Vector, what::Any, paths) =
+    what == :symlink ? what : seen[end]
+follow_symlink_chain(seen::Vector, what::String, paths) =
+    what in seen ? :symlink :
+        follow_symlink_chain(push!(seen, what), paths[what], paths)
 
- # our `cp` doesn't copy ACL properties, so manually set them via `chmod`
- function copy_mode(src::String, dst::String)
+# our `cp` doesn't copy ACL properties, so manually set them via `chmod`
+function copy_mode(src::String, dst::String)
     chmod(dst, filemode(src))
     isdir(dst) || return
     for name in readdir(dst)
