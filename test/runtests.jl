@@ -95,6 +95,14 @@ end
             @arg_test tar @test empty_tree_sha256 ==
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha256", copy_symlinks=true)
         end
+        NON_STDLIB_TESTS && begin
+            open(GzipDecompressorStream, "data/iso_codes.v4.11.0.any.tar.gz") do io
+                @test Tar.tree_hash(io) == "71f68a3d55d73f2e15a3969c241fae2349b1feb5"
+            end
+            open(GzipDecompressorStream, "data/iso_codes.v4.11.0.any.tar.gz") do io
+                @test Tar.tree_hash(io; copy_symlinks=true) == "409d6ac4c02dae43ff4fe576b5c5820d0386fb3f"
+            end
+        end
     end
     @testset "Tar.list & check properties" begin
         headers = Tar.list(tarball)

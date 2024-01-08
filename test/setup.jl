@@ -10,6 +10,7 @@ const NON_STDLIB_TESTS = Main == @__MODULE__
 
 if NON_STDLIB_TESTS
     using SimpleBufferStream
+    using CodecZlib
 
     using Tar_jll
     if isdefined(Tar_jll, :tar)

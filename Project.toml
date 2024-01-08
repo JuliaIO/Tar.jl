@@ -16,6 +16,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SimpleBufferStream = "777ac1f9-54b0-4bf8-805c-2214025038e7"
 Tar_jll = "9b64493d-8859-5bf3-93d7-7c32dd38186f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 
 [targets]
-test = ["Random", "SimpleBufferStream", "Tar_jll", "Test"]
+test = ["Random", "SimpleBufferStream", "Tar_jll", "Test", "CodecZlib"]
