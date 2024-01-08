@@ -441,11 +441,12 @@ function has_symlink(
     raw::Bool = false,
     strict::Bool = !raw,
 )
-    has_symlink = false
+    has_symlink::Bool = false
     list(tarball; raw = raw, strict = strict) do header
         if header.type == :symlink
             has_symlink = true
         end
+        return nothing
     end
     return has_symlink
 end
