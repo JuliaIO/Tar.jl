@@ -499,6 +499,7 @@ end
         @test read(path, String) == data
     end
     dir = Tar.extract(tarball, copy_symlinks=true)
+    @test tree_hash(dir) == Tar.tree_hash(tarball; copy_symlinks=true)
     test_file("file", data₁)
     test_file("link-file", data₁)
     test_none("link-file-slash")
