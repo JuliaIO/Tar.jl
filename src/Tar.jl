@@ -1,3 +1,6 @@
+"""
+The `Tar` module provides a simple interface for handling tar archives.
+"""
 module Tar
 
 import SHA

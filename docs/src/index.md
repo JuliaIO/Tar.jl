@@ -2,6 +2,8 @@
 EditURL = "https://github.com/JuliaIO/Tar.jl/blob/master/docs/src/index.md"
 ```
 
+The `Tar` module provides a simple interface for handling tar archives.
+
 # Tar
 
 ```@docs
