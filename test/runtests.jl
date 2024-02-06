@@ -1130,3 +1130,7 @@ end
         end
     end
 end
+
+@testset "Docstrings" begin
+    @test Docs.undocumented_names(Tar) == []
+end
