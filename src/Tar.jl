@@ -2,6 +2,9 @@ module Tar
 
 import SHA
 using ArgTools
+using Compat: @compat
+
+@compat public create, extract, list, rewrite, tree_hash, Header
 
 const true_predicate = _ -> true
 
