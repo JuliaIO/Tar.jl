@@ -1130,3 +1130,9 @@ end
         end
     end
 end
+
+if isdefined(Docs, :undocumented_names) # new in Julia 1.11
+    @testset "Docstrings" begin
+        @test isempty(Docs.undocumented_names(Tar))
+    end
+end
