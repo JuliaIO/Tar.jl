@@ -7,6 +7,10 @@ module Tar
 import SHA
 using ArgTools
 
+if VERSION >= v"1.11.0-DEV.469" # declare public, non-exported API
+    eval(Meta.parse("public create, extract, list, rewrite, tree_hash, Header"))
+end
+
 const true_predicate = _ -> true
 
 # 2 MiB to take advantage of THP if enabled
