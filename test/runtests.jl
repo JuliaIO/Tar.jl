@@ -569,6 +569,32 @@ end
     end
 end
 
+# In this issue we've seen that symlinking a directory caused files inside
+# the directory to become read-only. Guard against Tar.jl doing something
+# weird like that.
+@testset "Issue Pkg#2185" begin
+    mktempdir() do dir
+        root = joinpath(dir, "root")
+        target = joinpath("lib", "icu", "67.1")
+        link = joinpath("lib", "icu", "current")
+        file = joinpath(target, "file")
+        dir_mode = 0o755
+        file_mode = 0o644
+        mkpath(joinpath(root, target))
+        touch(joinpath(root, file))
+        chmod(joinpath(root, file), dir_mode)
+        chmod(joinpath(root, file), file_mode)
+        symlink(basename(target), joinpath(root, link))
+        tarball = Tar.create(root, joinpath(dir, "test.tar"))
+        files = Tar.list(tarball)
+        # Make sure the file and the symlink have the expected permissions.
+        # Note: in old versions of Julia, the file has always permission 755
+        # on Windows
+        @test Tar.Header(replace(file, "\\" => "/"), :file, VERSION ≤ v"1.6.0-DEV.1683" && Sys.iswindows() ? 0o755 : file_mode, 0, "") in files
+        @test Tar.Header(replace(link, "\\" => "/"), :symlink, dir_mode, 0, basename(target)) in files
+    end
+end
+
 @testset "API: create" begin
     local bytes
 
@@ -614,32 +640,6 @@ end
 
         # cleanup
         rm(dir, recursive=true)
-    end
-
-    # In this issue we've seen that symlinking a directory caused files inside
-    # the directory to become read-only. Guard against Tar.jl doing something
-    # weird like that.
-    @testset "Issue Pkg#2185" begin
-        mktempdir() do dir
-            root = joinpath(dir, "root")
-            target = joinpath("lib", "icu", "67.1")
-            link = joinpath("lib", "icu", "current")
-            file = joinpath(target, "file")
-            dir_mode = 0o755
-            file_mode = 0o644
-            mkpath(joinpath(root, target))
-            touch(joinpath(root, file))
-            chmod(joinpath(root, file), dir_mode)
-            chmod(joinpath(root, file), file_mode)
-            symlink(basename(target), joinpath(root, link))
-            tarball = Tar.create(root, joinpath(dir, "test.tar"))
-            files = Tar.list(tarball)
-            # Make sure the file and the symlink have the expected permissions.
-            # Note: in old versions of Julia, the file has always permission 755
-            # on Windows
-            @test Tar.Header(replace(file, "\\" => "/"), :file, VERSION ≤ v"1.6.0-DEV.1683" && Sys.iswindows() ? 0o755 : file_mode, 0, "") in files
-            @test Tar.Header(replace(link, "\\" => "/"), :symlink, dir_mode, 0, basename(target)) in files
-        end
     end
 end
 
