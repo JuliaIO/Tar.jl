@@ -102,6 +102,7 @@ function create(
     skeleton::Union{ArgRead, Nothing} = nothing,
     portable::Bool = false,
 )
+    dir = String(dir)
     check_create_dir(dir)
     if skeleton === nothing
         arg_write(tarball) do tar
@@ -245,6 +246,7 @@ function extract(
     predicate === true_predicate || skeleton === nothing ||
         error("extract: predicate and skeleton cannot be used together")
     skeleton = something(skeleton, devnull)
+    dir isa AbstractString && (dir = String(dir))
     check_extract_tarball(tarball)
     check_extract_dir(dir)
     arg_read(tarball) do tar
