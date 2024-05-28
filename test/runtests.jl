@@ -602,18 +602,20 @@ end
         dir = make_test_dir()
         @test !any(splitext(name)[2] == ".skip" for name in readdir(dir))
 
-        # create(dir)
-        tarball = Tar.create(dir)
-        bytes = read(tarball)
-        @test isfile(tarball)
-        rm(tarball)
+        for dir in (dir, SubString(dir))
+            # create(dir)
+            tarball = Tar.create(dir)
+            bytes = read(tarball)
+            @test isfile(tarball)
+            rm(tarball)
 
-        # create(dir, tarball)
-        arg_writers() do tarball, tar
-            @arg_test tar begin
-                @test tar == Tar.create(dir, tar)
+            # create(dir, tarball)
+            arg_writers() do tarball, tar
+                @arg_test tar begin
+                    @test tar == Tar.create(dir, tar)
+                end
+                @test read(tarball) == bytes
             end
-            @test read(tarball) == bytes
         end
 
         # cleanup
@@ -625,17 +627,19 @@ end
         @test any(splitext(name)[2] == ".skip" for name in readdir(dir))
         predicate = path -> splitext(path)[2] != ".skip"
 
-        # create(predicate, dir)
-        tarball = Tar.create(predicate, dir)
-        @test read(tarball) == bytes
-        rm(tarball)
-
-        # create(predicate, dir, tarball)
-        arg_writers() do tarball, tar
-            @arg_test tar begin
-                @test tar == Tar.create(predicate, dir, tar)
-            end
+        for dir in (dir, SubString(dir))
+            # create(predicate, dir)
+            tarball = Tar.create(predicate, dir)
             @test read(tarball) == bytes
+            rm(tarball)
+
+            # create(predicate, dir, tarball)
+            arg_writers() do tarball, tar
+                @arg_test tar begin
+                    @test tar == Tar.create(predicate, dir, tar)
+                end
+                @test read(tarball) == bytes
+            end
         end
 
         # cleanup
@@ -650,34 +654,36 @@ end
     n = length(test_dir_paths)
 
     # list([callback,] tarball)
-    arg_readers(tarball) do tar
-        @arg_test tar begin
-            headers = Tar.list(tar)
-            @test test_dir_paths == [hdr.path for hdr in headers]
+    for tarball in (tarball, SubString(tarball))
+        arg_readers(tarball) do tar
+            @arg_test tar begin
+                headers = Tar.list(tar)
+                @test test_dir_paths == [hdr.path for hdr in headers]
+            end
+            @arg_test tar @test n == tar_count(tar)
+            @arg_test tar begin
+                Tar.list(tar) do hdr
+                    @test hdr isa Tar.Header
+                end :: Nothing
+            end
+            local data_pairs
+            @arg_test tar begin
+                Tar.list(tar) do hdr, data
+                    @test hdr isa Tar.Header
+                    @test data isa Vector{Pair{Symbol, String}}
+                    data_pairs = data
+                end :: Nothing
+            end
+            local data_buffer
+            @arg_test tar begin
+                Tar.list(tar) do hdr, data::Vector{UInt8}
+                    @test hdr isa Tar.Header
+                    @test data isa Vector{UInt8}
+                    data_buffer = data
+                end :: Nothing
+            end
+            @test join(map(last, data_pairs)) == String(data_buffer)
         end
-        @arg_test tar @test n == tar_count(tar)
-        @arg_test tar begin
-            Tar.list(tar) do hdr
-                @test hdr isa Tar.Header
-            end :: Nothing
-        end
-        local data_pairs
-        @arg_test tar begin
-            Tar.list(tar) do hdr, data
-                @test hdr isa Tar.Header
-                @test data isa Vector{Pair{Symbol, String}}
-                data_pairs = data
-            end :: Nothing
-        end
-        local data_buffer
-        @arg_test tar begin
-            Tar.list(tar) do hdr, data::Vector{UInt8}
-                @test hdr isa Tar.Header
-                @test data isa Vector{UInt8}
-                data_buffer = data
-            end :: Nothing
-        end
-        @test join(map(last, data_pairs)) == String(data_buffer)
     end
 
     # add a sketchy entry to tarball
@@ -709,40 +715,44 @@ end
     @test hash != Tar.tree_hash(tarball, skip_empty=true)
     @test hash == Tar.tree_hash(tarball, skip_empty=false)
 
-    @testset "without predicate" begin
-        arg_readers(tarball) do tar
-            # extract(tarball)
-            @arg_test tar begin
-                dir = Tar.extract(tar)
-                check_tree_hash(hash, dir)
-            end
-            # extract(tarball, dir) — non-existent
-            @arg_test tar begin
-                dir = tempname()
-                Tar.extract(tar, dir)
-                check_tree_hash(hash, dir)
-            end
-            # extract(tarball, dir) — existent, empty
-            @arg_test tar begin
-                dir = mktempdir()
-                Tar.extract(tar, dir)
-                check_tree_hash(hash, dir)
-            end
-            # extract(tarball, dir) — non-directory (error)
-            @arg_test tar begin
-                file = tempname()
-                touch(file)
-                @test_throws ErrorException Tar.extract(tar, file)
-                read(tar) # consume the rest
-                rm(file)
-            end
-            # extract(tarball, dir) — non-empty directory (error)
-            @arg_test tar begin
-                dir = mktempdir()
-                touch(joinpath(dir, "file"))
-                @test_throws ErrorException Tar.extract(tar, dir)
-                read(tar) # consume the rest
-                rm(dir, recursive=true)
+    for tarball in (tarball, SubString(tarball))
+        @testset "without predicate" begin
+            arg_readers(tarball) do tar
+                # extract(tarball)
+                @arg_test tar begin
+                    dir = Tar.extract(tar)
+                    check_tree_hash(hash, dir)
+                end
+                for Str in (String, SubString{String})
+                    # extract(tarball, dir) — non-existent
+                    @arg_test tar begin
+                        dir = Str(tempname())
+                        Tar.extract(tar, dir)
+                        check_tree_hash(hash, dir)
+                    end
+                    # extract(tarball, dir) — existent, empty
+                    @arg_test tar begin
+                        dir = Str(mktempdir())
+                        Tar.extract(tar, dir)
+                        check_tree_hash(hash, dir)
+                    end
+                    # extract(tarball, dir) — non-directory (error)
+                    @arg_test tar begin
+                        file = Str(tempname())
+                        touch(file)
+                        @test_throws ErrorException Tar.extract(tar, file)
+                        read(tar) # consume the rest
+                        rm(file)
+                    end
+                    # extract(tarball, dir) — non-empty directory (error)
+                    @arg_test tar begin
+                        dir = Str(mktempdir())
+                        touch(joinpath(dir, "file"))
+                        @test_throws ErrorException Tar.extract(tar, dir)
+                        read(tar) # consume the rest
+                        rm(dir, recursive=true)
+                    end
+                end
             end
         end
     end
@@ -787,39 +797,43 @@ end
         @test hash != Tar.tree_hash(predicate, tarball, skip_empty=true)
         @test hash == Tar.tree_hash(predicate, tarball, skip_empty=false)
 
-        arg_readers(tarball) do tar
-            # extract(predicate, tarball)
-            @arg_test tar begin
-                dir = Tar.extract(predicate, tar)
-                check_tree_hash(hash, dir)
-            end
-            # extract(predicate, tarball, dir) — non-existent
-            @arg_test tar begin
-                dir = tempname()
-                Tar.extract(predicate, tar, dir)
-                check_tree_hash(hash, dir)
-            end
-            # extract(predicate, tarball, dir) — existent, empty
-            @arg_test tar begin
-                dir = mktempdir()
-                Tar.extract(predicate, tar, dir)
-                check_tree_hash(hash, dir)
-            end
-            # extract(predicate, tarball, dir) — non-directory (error)
-            @arg_test tar begin
-                file = tempname()
-                touch(file)
-                @test_throws ErrorException Tar.extract(predicate, tar, file)
-                read(tar) # consume the rest
-                rm(file)
-            end
-            # extract(predicate, tarball, dir) — non-empty directory (error)
-            @arg_test tar begin
-                dir = mktempdir()
-                touch(joinpath(dir, "file"))
-                @test_throws ErrorException Tar.extract(predicate, tar, dir)
-                read(tar) # consume the rest
-                rm(dir, recursive=true)
+        for tarball in (tarball, SubString(tarball))
+            arg_readers(tarball) do tar
+                # extract(predicate, tarball)
+                @arg_test tar begin
+                    dir = Tar.extract(predicate, tar)
+                    check_tree_hash(hash, dir)
+                end
+                for Str in (String, SubString{String})
+                    # extract(predicate, tarball, dir) — non-existent
+                    @arg_test tar begin
+                        dir = Str(tempname())
+                        Tar.extract(predicate, tar, dir)
+                        check_tree_hash(hash, dir)
+                    end
+                    # extract(predicate, tarball, dir) — existent, empty
+                    @arg_test tar begin
+                        dir = Str(mktempdir())
+                        Tar.extract(predicate, tar, dir)
+                        check_tree_hash(hash, dir)
+                    end
+                    # extract(predicate, tarball, dir) — non-directory (error)
+                    @arg_test tar begin
+                        file = Str(tempname())
+                        touch(file)
+                        @test_throws ErrorException Tar.extract(predicate, tar, file)
+                        read(tar) # consume the rest
+                        rm(file)
+                    end
+                    # extract(predicate, tarball, dir) — non-empty directory (error)
+                    @arg_test tar begin
+                        dir = Str(mktempdir())
+                        touch(joinpath(dir, "file"))
+                        @test_throws ErrorException Tar.extract(predicate, tar, dir)
+                        read(tar) # consume the rest
+                        rm(dir, recursive=true)
+                    end
+                end
             end
         end
     end
@@ -864,7 +878,8 @@ end
     end
 
     @testset "without predicate" begin
-        for tarball in (reference, alternate)
+        for Str in (String, SubString{String}),
+            tarball in map(Str, (reference, alternate))
             arg_readers(tarball) do old
                 # rewrite(old)
                 @arg_test old begin
@@ -875,6 +890,7 @@ end
                 # rewrite(old, new)
                 arg_writers() do new_file, new
                     @arg_test old new begin
+                        new isa AbstractString && (new = Str(new))
                         @test new == Tar.rewrite(old, new)
                     end
                     @test ref == read(new_file)
@@ -891,7 +907,8 @@ end
         ref = read(filtered)
         rm(filtered)
 
-        for tarball in (reference, alternate)
+        for Str in (String, SubString{String}),
+            tarball in map(Str, (reference, alternate))
             arg_readers(tarball) do old
                 # rewrite(predicate, old)
                 @arg_test old begin
@@ -902,6 +919,7 @@ end
                 # rewrite(predicate, old, new)
                 arg_writers() do new_file, new
                     @arg_test old new begin
+                        new isa AbstractString && (new = Str(new))
                         @test new == Tar.rewrite(predicate, old, new)
                     end
                     @test ref == read(new_file)
@@ -941,14 +959,16 @@ end
         tarballs[tarball′] = flag
     end
 
-    for (tarball, flag) in tarballs
+    for Str in (String, SubString{String}),
+        (tarball, flag) in tarballs
+        tarball = Str(tarball)
         reference = read(tarball)
         # first, generate a skeleton
-        skeleton = tempname()
+        skeleton = Str(tempname())
         dir = Tar.extract(tarball, skeleton=skeleton)
         @test isfile(skeleton)
         # test that an empty tarball fails
-        truncated = tempname()
+        truncated = Str(tempname())
         write(truncated, zeros(1024))
         arg_readers(truncated) do skel
             @arg_test skel begin
@@ -977,7 +997,10 @@ end
         end
         # check that extracting skeleton to IO works
         arg_writers() do skeleton′, skel
-            @arg_test skel Tar.extract(tarball, skeleton=skel)
+            @arg_test skel begin
+                skel isa AbstractString && (skel = Str(skel))
+                Tar.extract(tarball, skeleton=skel)
+            end
             @test read(skeleton) == read(skeleton′)
         end
         rm(skeleton)
