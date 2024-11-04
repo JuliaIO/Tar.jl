@@ -118,7 +118,12 @@ function extract_tarball(
                 # create an executable with default mode but
                 # we don't have a way to do that afaik
             end
+            @info("Tar.jl debugging", tar_mode, sys_mode, tar_mode & sys_mode)
+            @info("icacls pre")
+            run(`icacls $(sys_path)`)
             chmod(sys_path, tar_mode & sys_mode)
+            @info("icacls post")
+            run(`icacls $(sys_path)`)
         end
     end
     copy_symlinks || return
