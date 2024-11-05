@@ -53,7 +53,13 @@ follow_symlink_chain(seen::Vector, what::String, paths) =
 
 # our `cp` doesn't copy ACL properties, so manually set them via `chmod`
 function copy_mode(src::String, dst::String)
+    @info("copy_mode pre", dst, src)
+    run(`icacls $(src)`)
+    run(`icacls $(dst)`)
     chmod(dst, filemode(src))
+    @info("copy_mode post", dst, src)
+    run(`icacls $(src)`)
+    run(`icacls $(dst)`)
     isdir(dst) || return
     for name in readdir(dst)
         sub_src = joinpath(src, name)
@@ -118,8 +124,6 @@ function extract_tarball(
                 # create an executable with default mode but
                 # we don't have a way to do that afaik
             end
-            @info("Tar.jl debugging", tar_mode, sys_mode, tar_mode & sys_mode)
-            @info("icacls pre")
             run(`icacls $(sys_path)`)
             chmod(sys_path, tar_mode & sys_mode)
             @info("icacls post")
