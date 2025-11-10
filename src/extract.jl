@@ -627,8 +627,8 @@ function check_version_field(buf::AbstractVector{UInt8})
 end
 
 function check_checksum_field(buf::AbstractVector{UInt8})
-    chksum = Tar.read_header_int(buf, :chksum)
-    r = Tar.index_range(:chksum)
+    chksum = read_header_int(buf, :chksum)
+    r = index_range(:chksum)
     r_first, r_last = first(r), last(r)
 
     actual = zero(UInt32)
