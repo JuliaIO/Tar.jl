@@ -627,12 +627,21 @@ function check_version_field(buf::AbstractVector{UInt8})
 end
 
 function check_checksum_field(buf::AbstractVector{UInt8})
-    chksum = read_header_int(buf, :chksum)
-    actual = let r = index_range(:chksum)
-        sum(i in r ? UInt8(' ') : buf[i] for i = 1:512)
+    chksum = Tar.read_header_int(buf, :chksum)
+    r = Tar.index_range(:chksum)
+    r_first, r_last = first(r), last(r)
+
+    actual = zero(UInt32)
+    for i in 1:(r_first-1)
+        actual += buf[i]
     end
+    actual += UInt32(' ') * (r_last - r_first + 1)
+    for i in (r_last+1):512
+        actual += buf[i]
+    end
+
     chksum == actual && return
-    header_error(buf, "incorrect header checksum = $chksum; should be $actual")
+    error("incorrect header checksum = $chksum; should be $actual")
 end
 
 function read_header_size(buf::AbstractVector{UInt8})
