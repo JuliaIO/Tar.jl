@@ -654,7 +654,7 @@ function read_header_str(buf::AbstractVector{UInt8}, fld::Symbol)
     r = index_range(fld)
     for i in r
         byte = buf[i]
-        byte == 0 && return String(buf[first(r):i-1])
+        byte == 0 && return String(@view buf[first(r):i-1])
     end
     return String(buf[r])
 end
