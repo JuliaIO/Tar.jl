@@ -83,11 +83,26 @@ end
     @testset "Tar.tree_hash" begin
         arg_readers(tarball) do tar
             @arg_test tar @test Tar.tree_hash(tar) == hash
+            @arg_test tar @test Tar.tree_hash(tar; copy_symlinks=true) != hash
             @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar)
+            @arg_test tar @test empty_tree_sha1 == Tar.tree_hash(hdr->false, tar; copy_symlinks=true)
             @arg_test tar @test empty_tree_sha1 ==
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha1")
+            @arg_test tar @test empty_tree_sha1 ==
+                Tar.tree_hash(hdr->false, tar, algorithm="git-sha1", copy_symlinks=true)
             @arg_test tar @test empty_tree_sha256 ==
                 Tar.tree_hash(hdr->false, tar, algorithm="git-sha256")
+            @arg_test tar @test empty_tree_sha256 ==
+                Tar.tree_hash(hdr->false, tar, algorithm="git-sha256", copy_symlinks=true)
+        end
+        NON_STDLIB_TESTS && begin
+            iso_codes_tarball = Downloads.download("https://github.com/JuliaBinaryWrappers/iso_codes_jll.jl/releases/download/iso_codes-v4.11.0+0/iso_codes.v4.11.0.any.tar.gz")
+            open(GzipDecompressorStream, iso_codes_tarball) do io
+                @test Tar.tree_hash(io) == "71f68a3d55d73f2e15a3969c241fae2349b1feb5"
+            end
+            open(GzipDecompressorStream, iso_codes_tarball) do io
+                @test Tar.tree_hash(io; copy_symlinks=true) == "409d6ac4c02dae43ff4fe576b5c5820d0386fb3f"
+            end
         end
     end
     @testset "Tar.list & check properties" begin
@@ -484,6 +499,7 @@ end
         @test read(path, String) == data
     end
     dir = Tar.extract(tarball, copy_symlinks=true)
+    @test tree_hash(dir) == Tar.tree_hash(tarball; copy_symlinks=true)
     test_file("file", data₁)
     test_file("link-file", data₁)
     test_none("link-file-slash")
