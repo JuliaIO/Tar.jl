@@ -65,6 +65,13 @@ const TYPE_SYMBOLS = (
     '6'  => :fifo,
 )
 
+Base.isfile(hdr::Header)     = hdr.type == :file
+Base.islink(hdr::Header)     = hdr.type == :symlink
+Base.ischardev(hdr::Header)  = hdr.type == :chardev
+Base.isblockdev(hdr::Header) = hdr.type == :blockdev
+Base.isdir(hdr::Header)      = hdr.type == :directory
+Base.isfifo(hdr::Header)     = hdr.type == :fifo
+
 function to_symbolic_type(type::Char)
     for (t, s) in TYPE_SYMBOLS
         type == t && return s
