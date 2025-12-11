@@ -1,3 +1,15 @@
+const PathInfo = Union{String, Int64, Symbol}
+
+struct GitLeaf
+    mode::String
+    hash::String
+end
+
+struct GitTree
+    children::Dict{String, Union{GitTree, GitLeaf}}
+end
+GitTree() = GitTree(Dict{String, Union{GitTree, GitLeaf}}())
+
 function iterate_headers(
     callback::Function,
     tar::IO;
@@ -168,7 +180,7 @@ end
 
 # resolve symlink target or nothing if not valid
 function link_target(
-    paths::Dict{String},
+    paths::Dict{String, PathInfo},
     path::AbstractString,
     link::AbstractString,
 )
@@ -214,21 +226,21 @@ function git_tree_hash(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 ) where HashType <: SHA.SHA_CTX
     # build tree with leaves for files and symlinks
-    tree = Dict{String,Any}()
+    tree = GitTree()
     read_tarball(predicate, tar; buf=buf) do hdr, parts
         isempty(parts) && return
         name = pop!(parts)
         node = tree
         for part in parts
-            node′ = get(node, part, nothing)
-            if !(node′ isa Dict)
-                node′ = node[part] = Dict{String,Any}()
+            child = get(node.children, part, nothing)
+            if !(child isa GitTree)
+                child = node.children[part] = GitTree()
             end
-            node = node′
+            node = child
         end
         if hdr.type == :directory
-            if !(get(node, name, nothing) isa Dict)
-                node[name] = Dict{String,Any}()
+            if !(get(node.children, name, nothing) isa GitTree)
+                node.children[name] = GitTree()
             end
             return
         elseif hdr.type == :symlink
@@ -238,47 +250,51 @@ function git_tree_hash(
             end
         elseif hdr.type == :hardlink
             mode = iszero(hdr.mode & 0o100) ? "100644" : "100755"
-            node′ = tree
+            linked = tree
             for part in split(hdr.link, '/')
-                node′ = node′[part]
+                linked = linked.children[part]
             end
-            hash = node′[2] # hash of linked file
+            hash = (linked::GitLeaf).hash
         elseif hdr.type == :file
             mode = iszero(hdr.mode & 0o100) ? "100644" : "100755"
             hash = git_file_hash(tar, hdr.size, HashType, buf=buf)
         else
             error("unsupported type for git tree hashing: $(hdr.type)")
         end
-        node[name] = (mode, hash)
+        node.children[name] = GitLeaf(mode, hash)
     end
 
     # prune directories that don't contain any files
     if skip_empty
-        prune_empty!(node::Tuple) = true
-        function prune_empty!(node::Dict)
-            filter!(node) do (name, child)
-                prune_empty!(child)
-            end
-            return !isempty(node)
-        end
         prune_empty!(tree)
     end
 
     # reduce the tree to a single hash value
-    hash_tree(node::Tuple) = node
-    function hash_tree(node::Dict)
-        by((name, child)) = child isa Dict ? "$name/" : name
-        hash = git_object_hash("tree", HashType) do io
-            for (name, child) in sort!(collect(node), by=by)
-                mode, hash = hash_tree(child)
-                print(io, mode, ' ', name, '\0')
-                write(io, hex2bytes(hash))
-            end
-        end
-        return "40000", hash
-    end
+    return hash_git_tree(tree, HashType)[end]
+end
 
-    return hash_tree(tree)[end]
+prune_empty!(node::GitLeaf) = true
+function prune_empty!(node::GitTree)
+    filter!(node.children) do (name, child)
+        prune_empty!(child)
+    end
+    return !isempty(node.children)
+end
+
+function hash_git_tree(node::GitLeaf, ::Type{HashType}) where HashType <: SHA.SHA_CTX
+    return (node.mode, node.hash)
+end
+
+function hash_git_tree(node::GitTree, ::Type{HashType}) where HashType <: SHA.SHA_CTX
+    by((name, child)) = child isa GitTree ? "$name/" : name
+    hash = git_object_hash("tree", HashType) do io
+        for (name, child) in sort!(collect(node.children), by=by)
+            mode, hash = hash_git_tree(child, HashType)
+            print(io, mode, ' ', name, '\0')
+            write(io, hex2bytes(hash))
+        end
+    end
+    return ("40000", hash)
 end
 
 function git_object_hash(
@@ -350,7 +366,7 @@ function read_tarball(
 )
     write_skeleton_header(skeleton, buf=buf)
     # symbols for path types except symlinks store the link
-    paths = Dict{String,Any}()
+    paths = Dict{String, PathInfo}()
     globals = Dict{String,String}()
     while !eof(tar)
         hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
