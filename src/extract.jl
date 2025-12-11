@@ -210,12 +210,13 @@ function git_tree_hash(
     predicate::Function,
     tar::IO,
     ::Type{HashType},
-    skip_empty::Bool;
+    skip_empty::Bool,
+    copy_symlinks::Bool = false;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 ) where HashType <: SHA.SHA_CTX
     # build tree with leaves for files and symlinks
     tree = Dict{String,Any}()
-    read_tarball(predicate, tar; buf=buf) do hdr, parts
+    paths = read_tarball(predicate, tar; buf=buf) do hdr, parts
         isempty(parts) && return
         name = pop!(parts)
         node = tree
@@ -232,9 +233,14 @@ function git_tree_hash(
             end
             return
         elseif hdr.type == :symlink
-            mode = "120000"
-            hash = git_object_hash("blob", HashType) do io
-                write(io, hdr.link)
+            if copy_symlinks
+                mode = "120000"
+                hash = hdr.link
+            else
+                mode = "120000"
+                hash = git_object_hash("blob", HashType) do io
+                    write(io, hdr.link)
+                end
             end
         elseif hdr.type == :hardlink
             mode = iszero(hdr.mode & 0o100) ? "100644" : "100755"
@@ -250,6 +256,57 @@ function git_tree_hash(
             error("unsupported type for git tree hashing: $(hdr.type)")
         end
         node[name] = (mode, hash)
+    end
+
+    if copy_symlinks
+        # resolve the internal targets of symlinks
+        for (path, what) in paths
+            what isa String || continue
+            target = link_target(paths, path, what)
+            paths[path] = something(target, :symlink)
+        end
+
+        for (path, what) in paths
+            what isa AbstractString || continue
+            paths[path] = follow_symlink_chain([path], what, paths)
+        end
+
+        # use paths to index into the tree
+        function get_tree_index(tree::Dict, path::AbstractString)
+            node = tree
+            parts = splitpath(path)
+            for part in parts
+                node = node[part]
+            end
+            return node
+        end
+        function set_tree_index!(tree::Dict, value, path::AbstractString)
+            node = tree
+            parts = splitpath(path)
+            for part in parts[1:end-1]
+                node = node[part]
+            end
+            node[parts[end]] = value
+        end
+        function prune_tree_index!(tree::Dict, path::AbstractString)
+            node = tree
+            parts = splitpath(path)
+            for part in parts[1:end-1]
+                node = node[part]
+            end
+            delete!(node, parts[end])
+        end
+
+        # copy hashes
+        for (path, what) in paths
+            if what isa AbstractString
+                what_hash = get_tree_index(tree, what)
+                set_tree_index!(tree, what_hash, path)
+            elseif what == :symlink
+                # external symlink
+                prune_tree_index!(tree, path)
+            end
+        end
     end
 
     # prune directories that don't contain any files

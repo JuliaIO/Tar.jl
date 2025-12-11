@@ -352,6 +352,7 @@ end
         tarball    :: Union{AbstractString, AbstractCmd, IO}
         algorithm  :: AbstractString
         skip_empty :: Bool
+        copy_symlinks :: Bool
 
 Compute a tree hash value for the file tree that the tarball contains. By
 default, this uses git's tree hashing algorithm with the SHA1 secure hash
@@ -399,21 +400,26 @@ hash, the hash value that you get will match the hash value computed by
 are hashing trees that may contain empty directories (i.e. do not come from a
 git repo), however, it is recommended that you hash them using a tool (such as
 this one) that does not ignore empty directories.
+
+If `copy_symlinks` is true, symlinks in the tarfile will be followed and the
+target hashes will be copied. This is useful for checking what the hash would
+be when using `Tar.extract` with `copy_symlinks = true`.
 """
 function tree_hash(
     predicate::Function,
     tarball::ArgRead;
     algorithm::AbstractString = "git-sha1",
     skip_empty::Bool = false,
+    copy_symlinks::Bool = false,
 )
     check_tree_hash_tarball(tarball)
     if algorithm == "git-sha1"
         return arg_read(tarball) do tar
-            git_tree_hash(predicate, tar, SHA.SHA1_CTX, skip_empty)
+            git_tree_hash(predicate, tar, SHA.SHA1_CTX, skip_empty, copy_symlinks)
         end
     elseif algorithm == "git-sha256"
         return arg_read(tarball) do tar
-            git_tree_hash(predicate, tar, SHA.SHA256_CTX, skip_empty)
+            git_tree_hash(predicate, tar, SHA.SHA256_CTX, skip_empty, copy_symlinks)
         end
     else
         error("invalid tree hashing algorithm: $algorithm")
@@ -424,12 +430,14 @@ function tree_hash(
     tarball::ArgRead;
     algorithm::AbstractString = "git-sha1",
     skip_empty::Bool = false,
+    copy_symlinks::Bool = false,
 )
     tree_hash(
         true_predicate,
         tarball,
         algorithm = algorithm,
         skip_empty = skip_empty,
+        copy_symlinks = copy_symlinks
     )
 end
 
