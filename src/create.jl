@@ -1,3 +1,13 @@
+struct RewriteEntry
+    hdr::Header
+    pos::Int64
+end
+
+struct RewriteTree
+    children::Dict{String, Union{RewriteTree, RewriteEntry}}
+end
+RewriteTree() = RewriteTree(Dict{String, Union{RewriteTree, RewriteEntry}}())
+
 function create_tarball(
     predicate::Function,
     tar::IO,
@@ -47,42 +57,43 @@ function rewrite_tarball(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     portable::Bool = false,
 )
-    tree = Dict{String,Any}()
+    tree = RewriteTree()
     read_tarball(predicate, old_tar; buf=buf) do hdr, parts
         portable && check_windows_path(hdr.path, parts)
         isempty(parts) && return
         node = tree
         name = pop!(parts)
         for part in parts
-            node′ = get(node, part, nothing)
-            if !(node′ isa Dict)
-                node′ = node[part] = Dict{String,Any}()
+            child = get(node.children, part, nothing)
+            if !(child isa RewriteTree)
+                child = node.children[part] = RewriteTree()
             end
-            node = node′
+            node = child
         end
         if hdr.type == :hardlink
-            node′ = tree
+            linked = tree
             for part in split(hdr.link, '/')
-                node′ = node′[part]
+                linked = linked.children[part]
             end
-            hdr′ = Header(node′[1], path=hdr.path, mode=hdr.mode)
-            node[name] = (hdr′, node′[2])
+            entry = linked::RewriteEntry
+            hdr′ = Header(entry.hdr, path=hdr.path, mode=hdr.mode)
+            node.children[name] = RewriteEntry(hdr′, entry.pos)
         else
-            if !(hdr.type == :directory && get(node, name, nothing) isa Dict)
-                node[name] = (hdr, position(old_tar))
+            if !(hdr.type == :directory && get(node.children, name, nothing) isa RewriteTree)
+                node.children[name] = RewriteEntry(hdr, position(old_tar))
             end
             skip_data(old_tar, hdr.size)
         end
     end
     write_tarball(new_tar, tree, buf=buf) do node, tar_path
-        if node isa Dict
+        if node isa RewriteTree
             hdr = Header(tar_path, :directory, 0o755, 0, "")
-            return hdr, node
+            return hdr, node.children
         else
-            hdr, pos = node
-            mode = hdr.type == :file && iszero(hdr.mode & 0o100) ? 0o644 : 0o755
-            hdr′ = Header(hdr; path=tar_path, mode=mode)
-            data = hdr.type == :directory ? nothing : (old_tar, pos)
+            entry = node::RewriteEntry
+            mode = entry.hdr.type == :file && iszero(entry.hdr.mode & 0o100) ? 0o644 : 0o755
+            hdr′ = Header(entry.hdr; path=tar_path, mode=mode)
+            data = entry.hdr.type == :directory ? nothing : (old_tar, entry.pos)
             return hdr′, data
         end
     end
