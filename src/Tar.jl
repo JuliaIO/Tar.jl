@@ -246,23 +246,19 @@ function extract(
     predicate === true_predicate || skeleton === nothing ||
         error("extract: predicate and skeleton cannot be used together")
     skeleton = something(skeleton, devnull)
-    dir isa AbstractString && (dir = String(dir))
+    dir_str = dir isa AbstractString ? String(dir) : dir
     check_extract_tarball(tarball)
-    check_extract_dir(dir)
+    check_extract_dir(dir_str)
     arg_read(tarball) do tar
-        arg_mkdir(dir) do dir
-            if copy_symlinks === nothing
-                copy_symlinks = !can_symlink(dir)
-            end
-            let copy_symlinks=copy_symlinks
-                arg_write(skeleton) do skeleton
-                    extract_tarball(
-                        predicate, tar, dir,
-                        skeleton = skeleton,
-                        copy_symlinks = copy_symlinks,
-                        set_permissions = set_permissions,
-                    )
-                end
+        arg_mkdir(dir_str) do dir
+            copy_symlinks_local = copy_symlinks === nothing ? !can_symlink(dir) : copy_symlinks
+            arg_write(skeleton) do skeleton
+                extract_tarball(
+                    predicate, tar, dir,
+                    skeleton = skeleton,
+                    copy_symlinks = copy_symlinks_local,
+                    set_permissions = set_permissions,
+                )
             end
         end
     end
