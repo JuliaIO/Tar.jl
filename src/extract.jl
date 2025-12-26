@@ -289,9 +289,9 @@ function hash_git_tree(node::GitTree, ::Type{HashType}) where HashType <: SHA.SH
     by((name, child)) = child isa GitTree ? "$name/" : name
     hash = git_object_hash("tree", HashType) do io
         for (name, child) in sort!(collect(node.children), by=by)
-            mode, hash = hash_git_tree(child, HashType)
+            mode, child_hash = hash_git_tree(child, HashType)
             print(io, mode, ' ', name, '\0')
-            write(io, hex2bytes(hash))
+            write(io, hex2bytes(child_hash))
         end
     end
     return ("40000", hash)
