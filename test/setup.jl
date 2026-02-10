@@ -6,7 +6,9 @@ import Tar
 
 include("git_tools.jl")
 
-@test isempty(Test.detect_closure_boxes(Tar))
+if isdefined(Test, :detect_closure_boxes)
+    @test isempty(Test.detect_closure_boxes(Tar))
+end
 
 const NON_STDLIB_TESTS = Main == @__MODULE__
 
