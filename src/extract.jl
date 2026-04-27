@@ -534,7 +534,7 @@ function read_extended_metadata(
         i+1 < j < k < l || malformed()
         @assert data[j] == UInt8(' ')
         @assert data[k] == UInt8('=')
-        data[l] == UInt('\n') || malformed()
+        data[l] == UInt8('\n') || malformed()
         i = l # next starting point
         # pass key, value back to caller
         key = String(@view data[j+1:k-1])
