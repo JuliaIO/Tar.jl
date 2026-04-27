@@ -20,14 +20,13 @@ const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
 !hasmethod(skip, Tuple{Union{Base.Process, Base.ProcessChain}, Integer}) &&
 function Base.skip(io::Union{Base.Process, Base.ProcessChain}, n::Integer)
     n < 0 && throw(ArgumentError("cannot skip backwards when reading from a process"))
-    isempty(skip_buffer) && resize!(skip_buffer, DEFAULT_BUFFER_SIZE)
+    buf = Vector{UInt8}(undef, min(n, DEFAULT_BUFFER_SIZE))
     while n > 0
-        n -= readbytes!(io, skip_buffer, min(n, length(skip_buffer)))
+        n -= readbytes!(io, buf, min(n, length(buf)))
     end
     # TODO: our skip data should throw if there's not enough data
     return io
 end
-const skip_buffer = UInt8[]
 
 # method for this exists in Base since Julia 1.4 but not before
 !hasmethod(read!, Tuple{IO, AbstractArray}) &&
