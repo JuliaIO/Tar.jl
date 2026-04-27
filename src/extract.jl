@@ -156,6 +156,7 @@ function extract_tarball(
     sort!(copies, by=last)
 
     while !isempty(copies)
+        n_before = length(copies)
         i = 1
         while i ≤ length(copies)
             path, what = copies[i]
@@ -175,6 +176,10 @@ function extract_tarball(
                 end
             end
         end
+        # if no progress was made, remaining copies form a circular
+        # dependency (mutual directory prefix cycle) and cannot be
+        # faithfully materialized as copies — skip them
+        length(copies) < n_before || break
     end
 end
 

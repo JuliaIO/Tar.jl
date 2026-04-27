@@ -518,6 +518,24 @@ end
     # check temp dir is empty, remove it
     @test isempty(readdir(tmp))
     rm(tmp)
+    # mutual directory prefix cycle: a/x -> ../b, b/y -> ../a
+    # these can't be faithfully copied and should be skipped
+    tarball2 = let io = IOBuffer()
+        tar_write_dir(io, "a")
+        tar_write_file(io, "a/file", data₁)
+        tar_write_dir(io, "b")
+        tar_write_file(io, "b/file", data₂)
+        tar_write_link(io, "a/x", "../b")
+        tar_write_link(io, "b/y", "../a")
+        write(io, zeros(UInt8, 1024))
+        seekstart(io)
+    end
+    dir = Tar.extract(tarball2, copy_symlinks=true)
+    test_file("a/file", data₁)
+    test_file("b/file", data₂)
+    test_none("a/x")
+    test_none("b/y")
+    rm(dir, recursive=true)
 end
 
 @testset "bad Windows paths" begin
