@@ -526,6 +526,7 @@ end
         "c:", "\\", "D:\\tmp", "*.*", "\1.txt",
         "PRN", "LPT1", "lpt2", "LpT3", "Com9",
         "CON.txt", "PRN.∀", "\xba\xdd",
+        "file.", "file ", "dir/trailing.",
     ]
     for name in bad
         with_tarball(Tar.Header(name, :file, 0o644, 0, "")) do tarball
@@ -554,6 +555,7 @@ end
         "c;", "÷", "D;÷tmp", "+.+", "1.txt",
         ".PRN", "LPT0", "𝕃pt2", " LpT3", "Com",
         "CON⋅txt", "PRN-", "\xdd\xba",
+        "fi.le", "fi le", ".hidden",
     ]
     for name in fine
         with_tarball(Tar.Header(name, :file, 0o644, 0, "")) do tarball

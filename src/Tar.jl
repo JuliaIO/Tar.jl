@@ -519,6 +519,9 @@ function check_windows_path(
             ch < ' ' || ch ∈ "\"*:<>?\\|" || continue
             error("illegal Windows char: $(repr(ch)) in $(repr(path))")
         end
+        if part ∉ (".", "..") && (endswith(part, '.') || endswith(part, ' '))
+            error("trailing dot/space in Windows name: $(repr(part)) in $(repr(path))")
+        end
         if occursin(WIN_SPECIAL_NAMES, part)
             error("reserved Windows name: $(repr(part)) in $(repr(path))")
         end
