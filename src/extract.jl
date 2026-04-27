@@ -629,7 +629,7 @@ function read_standard_header(
     link = read_header_str(buf, :linkname)
     prefix = read_header_str(buf, :prefix)
     # check that mode isn't too big
-    mode ≤ typemax(typemax(UInt16)) ||
+    mode ≤ typemax(UInt16) ||
         header_error(buf, "mode value too large: $(string(mode, base=8))")
     # combine prefix & name fields
     path = isempty(prefix) ? name : "$prefix/$name"
