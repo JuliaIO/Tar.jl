@@ -457,7 +457,7 @@ check_extract_tarball(tarball::AbstractString) =
     USAGE: extract([predicate,] tarball, [dir])
     """)
 
-check_extract_tarball(tarball::ArgWrite) = nothing
+check_extract_tarball(tarball::ArgRead) = nothing
 
 function check_extract_dir(dir::AbstractString)
     st = stat(dir)
