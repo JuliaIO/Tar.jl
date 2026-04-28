@@ -156,6 +156,7 @@ function extract_tarball(
     sort!(copies, by=last)
 
     while !isempty(copies)
+        n_before = length(copies)
         i = 1
         while i ≤ length(copies)
             path, what = copies[i]
@@ -175,6 +176,10 @@ function extract_tarball(
                 end
             end
         end
+        # if no progress was made, remaining copies form a circular
+        # dependency (mutual directory prefix cycle) and cannot be
+        # faithfully materialized as copies — skip them
+        length(copies) < n_before || break
     end
 end
 
@@ -534,7 +539,7 @@ function read_extended_metadata(
         i+1 < j < k < l || malformed()
         @assert data[j] == UInt8(' ')
         @assert data[k] == UInt8('=')
-        data[l] == UInt('\n') || malformed()
+        data[l] == UInt8('\n') || malformed()
         i = l # next starting point
         # pass key, value back to caller
         key = String(@view data[j+1:k-1])
@@ -629,7 +634,7 @@ function read_standard_header(
     link = read_header_str(buf, :linkname)
     prefix = read_header_str(buf, :prefix)
     # check that mode isn't too big
-    mode ≤ typemax(typemax(UInt16)) ||
+    mode ≤ typemax(UInt16) ||
         header_error(buf, "mode value too large: $(string(mode, base=8))")
     # combine prefix & name fields
     path = isempty(prefix) ? name : "$prefix/$name"
