@@ -632,7 +632,7 @@ end
             # create(dir, tarball)
             arg_writers() do tarball, tar
                 @arg_test tar begin
-                    @test tar == Tar.create(dir, tar)
+                    @test arg_write_return(tar) == Tar.create(dir, tar)
                 end
                 @test read(tarball) == bytes
             end
@@ -656,7 +656,7 @@ end
             # create(predicate, dir, tarball)
             arg_writers() do tarball, tar
                 @arg_test tar begin
-                    @test tar == Tar.create(predicate, dir, tar)
+                    @test arg_write_return(tar) == Tar.create(predicate, dir, tar)
                 end
                 @test read(tarball) == bytes
             end
@@ -911,7 +911,7 @@ end
                 arg_writers() do new_file, new
                     @arg_test old new begin
                         new isa AbstractString && (new = Str(new))
-                        @test new == Tar.rewrite(old, new)
+                        @test arg_write_return(new) == Tar.rewrite(old, new)
                     end
                     @test ref == read(new_file)
                 end
@@ -940,7 +940,7 @@ end
                 arg_writers() do new_file, new
                     @arg_test old new begin
                         new isa AbstractString && (new = Str(new))
-                        @test new == Tar.rewrite(predicate, old, new)
+                        @test arg_write_return(new) == Tar.rewrite(predicate, old, new)
                     end
                     @test ref == read(new_file)
                 end
