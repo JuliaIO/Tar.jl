@@ -1,5 +1,19 @@
 include("setup.jl")
 
+# Symlink targets with non-ASCII (multi-byte UTF-8) bytes: the git blob length is the
+# byte count of the target, not the character count. `Tar.tree_hash` must agree with the
+# reference `GitTools` implementation (and with `git`) for these.
+Sys.iswindows() || @testset "tree_hash: non-ASCII symlink target" begin
+    dir = mktempdir()
+    symlink("schön", joinpath(dir, "link"))  # 'ö' is two bytes in UTF-8
+    tarball = Tar.create(dir)
+    # byte-correct reference hash, cross-checked against command-line git
+    @test tree_hash(dir) == "289b9713bf8902fbd0688b0ca5584ec4cf08fdc9"
+    @test Tar.tree_hash(tarball) == tree_hash(dir)
+    rm(tarball)
+    rm(dir, recursive=true)
+end
+
 NON_STDLIB_TESTS &&
 @testset "unususal buffering" begin
     @testset "constant usage" begin

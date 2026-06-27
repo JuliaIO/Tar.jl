@@ -39,7 +39,9 @@ Calculate the git blob hash of a given path.
 function blob_hash(::Type{HashType}, path::AbstractString) where HashType <: SHA.SHA_CTX
     ctx = HashType()
     if islink(path)
-        datalen = length(readlink(path))
+        # The git blob header is the byte length of the link target, not the number of
+        # characters; `length` is wrong for non-ASCII (multi-byte UTF-8) targets.
+        datalen = sizeof(readlink(path))
     else
         datalen = filesize(path)
     end
