@@ -27,6 +27,13 @@ end
 
 tree_hash(path::AbstractString) = bytes2hex(GitTools.tree_hash(path))
 
+# `arg_write` (and the Tar functions built on it: `create`, `rewrite`, …) returns the
+# *path* for a `FileSpec` argument rather than the `FileSpec` itself. Newer ArgTools
+# exercises `FileSpec` via `arg_writers`, so normalize a writer argument to the value
+# those functions return when checking that the returned handle matches the argument.
+arg_write_return(arg) =
+    isdefined(ArgTools, :FileSpec) && arg isa ArgTools.FileSpec ? arg.path : arg
+
 function gen_file(file::String, size::Int)
     open(file, write=true) do io
         for i = 1:size; write(io, i % UInt8); end
