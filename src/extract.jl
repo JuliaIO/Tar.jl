@@ -86,6 +86,7 @@ function extract_tarball(
     set_permissions::Bool = true,
 )
     root = normpath(root)
+    last_dir = Ref("") # last path confirmed to be an existing directory
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         Sys.iswindows() && check_windows_path(hdr.path, parts)
         # get the file system version of the path
@@ -96,13 +97,21 @@ function extract_tarball(
         startswith(sys_path, root) ||
             error("attempt to extract relative path outside of root at $(repr(sys_path)) from $(repr(hdr.path))")
         src_path = hdr.type == :hardlink ? joinpath(root, hdr.link) : ""
+        # ensure dirname(sys_path) is a directory; a cached `last_dir` stays
+        # valid since the only removals below are of paths strictly under it
         dir = dirname(sys_path)
-        st = stat(dir)
-        # ensure dirname(sys_path) is a directory
-        if !isdir(st)
-            ispath(st) && rm(dir, force=true, recursive=true)
-            mkpath(dir)
-        elseif hdr.type != :hardlink || src_path != sys_path
+        dir_existed = true
+        if dir != last_dir[]
+            st = stat(dir)
+            if !isdir(st)
+                ispath(st) && rm(dir, force=true, recursive=true)
+                mkpath(dir)
+                dir_existed = false
+            end
+            last_dir[] = dir
+        end
+        # remove any existing path at sys_path (fresh directories are empty)
+        if dir_existed && (hdr.type != :hardlink || src_path != sys_path)
             st = lstat(sys_path)
             hdr.type == :directory && isdir(st) && return # from callback
             ispath(st) && rm(sys_path, force=true, recursive=true)
