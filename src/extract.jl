@@ -376,6 +376,7 @@ function read_tarball(
     paths = Dict{String, PathInfo}()
     globals = Dict{String,String}()
     can_position = applicable(position, tar)
+    any_symlinks = false
     while !eof(tar)
         hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
         hdr === nothing && break
@@ -394,20 +395,23 @@ function read_tarball(
             path = join(parts, '/')
             hdr′ = Header(hdr, path=path)
         end
-        # check for symlink prefixes (possible attack)
-        plen = 0 # byte length of the prefix of `path` before current part
-        for part in parts
-            prefix = SubString(path, 1, thisind(path, plen))
-            if get(paths, prefix, nothing) isa String
-                err = """
-                Tarball contains path with symlink prefix:
-                - path = $(repr(hdr.path))
-                - prefix = $(repr(prefix))
-                Refusing to extract — possible attack!
-                """
-                break
+        # check for symlink prefixes (possible attack); only symlink
+        # records store a String, so without one no prefix can match
+        if any_symlinks
+            plen = 0 # byte length of the prefix of `path` before current part
+            for part in parts
+                prefix = SubString(path, 1, thisind(path, plen))
+                if get(paths, prefix, nothing) isa String
+                    err = """
+                    Tarball contains path with symlink prefix:
+                    - path = $(repr(hdr.path))
+                    - prefix = $(repr(prefix))
+                    Refusing to extract — possible attack!
+                    """
+                    break
+                end
+                plen += ncodeunits(part) + (plen > 0 ? 1 : 0)
             end
-            plen += ncodeunits(part) + (plen > 0 ? 1 : 0)
         end
         # check that hardlinks refer to already-seen files
         if err === nothing && hdr.type == :hardlink
@@ -438,6 +442,7 @@ function read_tarball(
         check_header(hdr)
         err === nothing || error(err)
         # record info about path
+        any_symlinks |= hdr.type == :symlink
         paths[path] =
             hdr.type == :symlink ? hdr.link :
             hdr.type == :file    ? hdr.size :
