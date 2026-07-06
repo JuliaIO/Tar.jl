@@ -17,6 +17,8 @@ function iterate_headers(
     strict::Bool = !raw,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
+    fields_arg = hasmethod(callback, Tuple{Header, Vector{Pair{Symbol, String}}})
+    raw_arg = !fields_arg && hasmethod(callback, Tuple{Header, Vector{UInt8}})
     eof(tar) && return
     hdr = read_standard_header(tar, buf=buf)
     hdr === nothing && return
@@ -42,9 +44,9 @@ function iterate_headers(
     @label loop
         hdr === nothing && break
         strict && check_header(hdr)
-        if hasmethod(callback, Tuple{Header, Vector{Pair{Symbol, String}}})
+        if fields_arg
             callback(hdr, dump_header(buf))
-        elseif hasmethod(callback, Tuple{Header, Vector{UInt8}})
+        elseif raw_arg
             callback(hdr, buf[1:512])
         else
             callback(hdr)
