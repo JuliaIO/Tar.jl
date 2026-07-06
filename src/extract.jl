@@ -124,6 +124,7 @@ function extract_tarball(
             exec = 0o100 & hdr.mode != 0
             tar_mode = exec ? 0o755 : 0o644
             sys_mode = filemode(sys_path)
+            cur_mode = sys_mode & 0o7777
             if exec
                 # copy read bits to execute bits with
                 # at least the user execute bit on
@@ -132,7 +133,9 @@ function extract_tarball(
                 # create an executable with default mode but
                 # we don't have a way to do that afaik
             end
-            chmod(sys_path, tar_mode & sys_mode)
+            new_mode = tar_mode & sys_mode
+            # skip the chmod syscall when it would be a no-op
+            new_mode == cur_mode || chmod(sys_path, new_mode)
         end
     end
     copy_symlinks || return
