@@ -107,7 +107,7 @@ function check_header(hdr::Header)
         err("$(hdr.type) with empty link path")
     hdr.type ∈ (:hardlink, :symlink) && hdr.size != 0 &&
         err("$(hdr.type) with non-zero size")
-    hdr.type == :hardlink && hdr.link[1] == '/' &&
+    hdr.type == :hardlink && !isempty(hdr.link) && hdr.link[1] == '/' &&
         err("hardlink with absolute link path")
     hdr.type == :hardlink && occursin(r"(^|/)\.\.(/|$)", hdr.link) &&
         err("hardlink contains '..' component")

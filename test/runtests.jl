@@ -1066,6 +1066,18 @@ if Sys.iswindows() && Sys.which("icacls") !== nothing && VERSION >= v"1.6"
     end
 end
 
+@testset "check_header" begin
+    # hardlink with empty link used to throw a BoundsError
+    err = try
+        Tar.check_header(Tar.Header("file", :hardlink, 0o644, 0, ""))
+        nothing
+    catch e
+        e
+    end
+    @test err isa ErrorException
+    @test occursin("hardlink with empty link path", err.msg)
+end
+
 @testset "header parsing" begin
     @testset "leading spaces in integer fields" begin
         # fragment of https://sparse.tamu.edu/MM/Oberwolfach/LF10.tar.gz
