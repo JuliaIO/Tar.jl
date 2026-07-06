@@ -2,7 +2,7 @@ const PathInfo = Union{String, Int64, Symbol}
 
 struct GitLeaf
     mode::String
-    hash::String
+    hash::Vector{UInt8} # raw digest bytes
 end
 
 struct GitTree
@@ -277,7 +277,7 @@ function git_tree_hash(
     end
 
     # reduce the tree to a single hash value
-    return hash_git_tree(tree, HashType)[end]
+    return bytes2hex(hash_git_tree(tree, HashType)[end])
 end
 
 prune_empty!(node::GitLeaf) = true
@@ -298,7 +298,7 @@ function hash_git_tree(node::GitTree, ::Type{HashType}) where HashType <: SHA.SH
         for (name, child) in sort!(collect(node.children), by=by)
             mode, child_hash = hash_git_tree(child, HashType)
             print(io, mode, ' ', name, '\0')
-            write(io, hex2bytes(child_hash))
+            write(io, child_hash)
         end
     end
     return ("40000", hash)
@@ -313,7 +313,7 @@ function git_object_hash(
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
     SHA.update!(ctx, body)
-    return bytes2hex(SHA.digest!(ctx))
+    return SHA.digest!(ctx)
 end
 
 function git_file_hash(
@@ -338,7 +338,7 @@ function git_file_hash(
         padded_size -= read_len
     end
     @assert size == padded_size == 0
-    return bytes2hex(SHA.digest!(ctx))
+    return SHA.digest!(ctx)
 end
 
 const SKELETON_MAGIC = "%!skeleton:\x83\xe6\xa8\xfe"
