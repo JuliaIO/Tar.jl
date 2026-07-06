@@ -95,7 +95,7 @@ function extract_tarball(
         sys_path = sys_path == "." ? root : normpath(root, sys_path)
         startswith(sys_path, root) ||
             error("attempt to extract relative path outside of root at $(repr(sys_path)) from $(repr(hdr.path))")
-        src_path = joinpath(root, hdr.link)
+        src_path = hdr.type == :hardlink ? joinpath(root, hdr.link) : ""
         dir = dirname(sys_path)
         st = stat(dir)
         # ensure dirname(sys_path) is a directory
