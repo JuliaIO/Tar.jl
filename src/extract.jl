@@ -375,33 +375,47 @@ function read_tarball(
     # symbols for path types except symlinks store the link
     paths = Dict{String, PathInfo}()
     globals = Dict{String,String}()
+    can_position = applicable(position, tar)
     while !eof(tar)
         hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
         hdr === nothing && break
         err = nothing
-        # normalize path and check for symlink attacks
-        path = ""
-        for part in split(hdr.path, '/')
+        # normalize path: drop empty and "." components
+        parts = split(hdr.path, '/')
+        n_parts = length(parts)
+        filter!(parts) do part
             # check_header checks for ".." later
-            (isempty(part) || part == ".") && continue
-            if err === nothing && get(paths, path, nothing) isa String
+            !isempty(part) && part != "."
+        end
+        if length(parts) == n_parts # already normalized
+            path = hdr.path
+            hdr′ = hdr
+        else
+            path = join(parts, '/')
+            hdr′ = Header(hdr, path=path)
+        end
+        # check for symlink prefixes (possible attack)
+        plen = 0 # byte length of the prefix of `path` before current part
+        for part in parts
+            prefix = SubString(path, 1, thisind(path, plen))
+            if get(paths, prefix, nothing) isa String
                 err = """
                 Tarball contains path with symlink prefix:
                 - path = $(repr(hdr.path))
-                - prefix = $(repr(path))
+                - prefix = $(repr(prefix))
                 Refusing to extract — possible attack!
                 """
+                break
             end
-            path = isempty(path) ? String(part) : "$path/$part"
+            plen += ncodeunits(part) + (plen > 0 ? 1 : 0)
         end
-        hdr′ = Header(hdr, path=path)
         # check that hardlinks refer to already-seen files
         if err === nothing && hdr.type == :hardlink
-            parts = filter!(split(hdr.link, '/')) do part
+            link_parts = filter!(split(hdr.link, '/')) do part
                 # check_header checks for ".." later
                 !isempty(part) && part != "."
             end
-            link = join(parts, '/')
+            link = join(link_parts, '/')
             hdr = Header(hdr, link=link)
             hdr′ = Header(hdr′, link=link)
             what = get(paths, link, Symbol("non-existent"))
@@ -429,9 +443,9 @@ function read_tarball(
             hdr.type == :file    ? hdr.size :
             hdr.type
         # apply callback, checking that it consumes IO correctly
-        before = applicable(position, tar) ? position(tar) : 0
-        callback(hdr, split(path, '/', keepempty=false))
-        applicable(position, tar) || continue
+        before = can_position ? position(tar) : 0
+        callback(hdr, parts)
+        can_position || continue
         advanced = position(tar) - before
         expected = round_up(hdr.size)
         advanced == expected ||
