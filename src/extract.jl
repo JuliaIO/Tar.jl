@@ -648,9 +648,20 @@ function read_standard_header(
 end
 
 function check_version_field(buf::AbstractVector{UInt8})
-    version = read_header_str(buf, :version)
-    occursin(r"^0* *$", version) && return
-    header_error(buf, "invalid version string for tar file: $(repr(version))")
+    # match r"^0* *$" against the NUL-terminated version field
+    seen_space = false
+    for i in index_range(:version)
+        byte = buf[i]
+        byte == 0x00 && return # NUL terminates the field
+        if byte == UInt8(' ')
+            seen_space = true
+        elseif byte == UInt8('0') && !seen_space
+            # leading zeros are valid
+        else
+            version = read_header_str(buf, :version)
+            header_error(buf, "invalid version string for tar file: $(repr(version))")
+        end
+    end
 end
 
 function check_checksum_field(buf::AbstractVector{UInt8})
@@ -690,7 +701,10 @@ function read_header_str(buf::AbstractVector{UInt8}, fld::Symbol)
     r = index_range(fld)
     for i in r
         byte = buf[i]
-        byte == 0 && return String(@view buf[first(r):i-1])
+        if byte == 0
+            i == first(r) && return ""
+            return String(@view buf[first(r):i-1])
+        end
     end
     return String(buf[r])
 end
