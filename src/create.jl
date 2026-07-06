@@ -161,43 +161,44 @@ function write_header(
     0x0 in codeunits(link) &&
         throw(ArgumentError("link contains NUL bytes: $(repr(path))"))
 
-    # determine if an extended header is needed
-    extended = Pair{String,String}[]
-    # WARNING: don't change the order of these insertions
-    # they are inserted and emitted in sorted order by key
-    if ncodeunits(link) > 100
-        push!(extended, "linkpath" => link)
-        link = "" # empty in standard header
-    end
     prefix = ""
     name = path
-    if ncodeunits(path) > 100
-        if ncodeunits(path) < 256
-            i = findprev('/', path, 100)
-            if i !== nothing
-                # try splitting into prefix and name
-                prefix = path[1:prevind(path, i)]
-                name   = path[nextind(path, i):end]
+    w = 0
+    # determine if an extended header is needed
+    if ncodeunits(link) > 100 || ncodeunits(path) > 100 || size ≥ 68719476736 # 8^12
+        extended = Pair{String,String}[]
+        # WARNING: don't change the order of these insertions
+        # they are inserted and emitted in sorted order by key
+        if ncodeunits(link) > 100
+            push!(extended, "linkpath" => link)
+            link = "" # empty in standard header
+        end
+        if ncodeunits(path) > 100
+            if ncodeunits(path) < 256
+                i = findprev('/', path, 100)
+                if i !== nothing
+                    # try splitting into prefix and name
+                    prefix = path[1:prevind(path, i)]
+                    name   = path[nextind(path, i):end]
+                end
+            end
+            if ncodeunits(name) > 100 || ncodeunits(prefix) > 155
+                push!(extended, "path" => path)
+                prefix = name = "" # empty in standard header
             end
         end
-        if ncodeunits(name) > 100 || ncodeunits(prefix) > 155
-            push!(extended, "path" => path)
-            prefix = name = "" # empty in standard header
+        if size ≥ 68719476736 # 8^12
+            push!(extended, "size" => string(size))
+            # still written in binary in standard header
+        end
+        # emit extended header if necessary
+        if !isempty(extended)
+            @assert issorted(extended)
+            w += write_extended_header(tar, extended, buf=buf)
         end
     end
-    if size ≥ 68719476736 # 8^12
-        push!(extended, "size" => string(size))
-        # still written in binary in standard header
-    end
-
-    # emit extended header if necessary
-    w = 0
-    if !isempty(extended)
-        @assert issorted(extended)
-        w += write_extended_header(tar, extended, buf=buf)
-    end
     # emit standard header
-    std_hdr = Header(hdr; link=link)
+    std_hdr = link === hdr.link ? hdr : Header(hdr; link=link)
     w += write_standard_header(tar, std_hdr, name=name, prefix=prefix, buf=buf)
 end
 
