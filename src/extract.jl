@@ -457,10 +457,12 @@ function read_header(
     tee::IO = devnull,
 )
     # process zero or more extended headers
-    metadata = copy(globals)
+    # metadata dict is only materialized when needed (common case: not)
+    metadata = isempty(globals) ? nothing : copy(globals)
     while true
         if hdr.type in (:g, :x) # POSIX extended headers
-            let hdr=hdr         # https://github.com/JuliaLang/julia/issues/15276
+            metadata === nothing && (metadata = Dict{String,String}())
+            let hdr=hdr, metadata=metadata # https://github.com/JuliaLang/julia/issues/15276
                 read_extended_metadata(io, hdr.size, buf=buf, tee=tee) do key, val
                     if key in ("size", "path", "linkpath")
                         if hdr.type == :g
@@ -477,6 +479,7 @@ function read_header(
                 error("malformed GNU long header (trailing `\\0` expected): " *
                       repr(String(data)))
             key = hdr.type == :L ? "path" : "linkpath"
+            metadata === nothing && (metadata = Dict{String,String}())
             metadata[key] = String(@view data[1:end-1])
         else
             break # non-extension header block
@@ -484,6 +487,7 @@ function read_header(
         hdr = read_standard_header(io, buf=buf, tee=tee)
         hdr === nothing && throw(EOFError())
     end
+    metadata === nothing && return hdr
     # determine final values for size, path & link
     size = hdr.size
     if "size" in keys(metadata)
