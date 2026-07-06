@@ -292,10 +292,24 @@ function hash_git_tree(node::GitLeaf, ::Type{HashType}) where HashType <: SHA.SH
     return (node.mode, node.hash)
 end
 
+# git sorts tree entries as if directory names had a trailing slash
+function git_tree_lt(x::Pair, y::Pair)
+    a = x.first::String
+    b = y.first::String
+    na, nb = ncodeunits(a), ncodeunits(b)
+    la = na + (x.second isa GitTree)
+    lb = nb + (y.second isa GitTree)
+    for i in 1:min(la, lb)
+        ca = i ≤ na ? codeunit(a, i) : UInt8('/')
+        cb = i ≤ nb ? codeunit(b, i) : UInt8('/')
+        ca == cb || return ca < cb
+    end
+    return la < lb
+end
+
 function hash_git_tree(node::GitTree, ::Type{HashType}) where HashType <: SHA.SHA_CTX
-    by((name, child)) = child isa GitTree ? "$name/" : name
     hash = git_object_hash("tree", HashType) do io
-        for (name, child) in sort!(collect(node.children), by=by)
+        for (name, child) in sort!(collect(node.children), lt=git_tree_lt)
             mode, child_hash = hash_git_tree(child, HashType)
             print(io, mode, ' ', name, '\0')
             write(io, child_hash)
@@ -316,6 +330,23 @@ function git_object_hash(
     return SHA.digest!(ctx)
 end
 
+# write "<kind> <size>\0" into the start of buf, returning the byte count
+function git_object_prefix!(buf::Vector{UInt8}, kind::String, size::Integer)
+    n = ncodeunits(kind)
+    copyto!(buf, 1, codeunits(kind), 1, n)
+    buf[n += 1] = UInt8(' ')
+    n += ndigits(size)
+    s, i = size, n
+    while true
+        buf[i] = UInt8('0') + (s % 10) % UInt8
+        s = div(s, 10)
+        s == 0 && break
+        i -= 1
+    end
+    buf[n += 1] = 0x00
+    return n
+end
+
 function git_file_hash(
     tar::IO,
     size::Integer,
@@ -323,7 +354,7 @@ function git_file_hash(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 ) where HashType <: SHA.SHA_CTX
     ctx = HashType()
-    SHA.update!(ctx, codeunits("blob $size\0"))
+    SHA.update!(ctx, view(buf, 1:git_object_prefix!(buf, "blob", size)))
     # TODO: this largely duplicates the logic of read_data
     # read_data could be used directly if SHA offered an interface
     # where you write data to an IO object and it maintains a hash
