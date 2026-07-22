@@ -84,42 +84,62 @@ function from_symbolic_type(sym::Symbol)
     return str[1]
 end
 
-function check_header(hdr::Header)
-    errors = String[]
-    err(e::String) = push!(errors, e)
+# whether a path contains a ".." component, i.e. r"(^|/)\.\.(/|$)"
+function has_dotdot_component(path::AbstractString)
+    cs = codeunits(path)
+    n = length(cs)
+    start = 1
+    for i in 1:n+1
+        if i > n || cs[i] == UInt8('/')
+            i - start == 2 && cs[start] == UInt8('.') && cs[start+1] == UInt8('.') &&
+                return true
+            start = i + 1
+        end
+    end
+    return false
+end
 
-    # error checks
-    isempty(hdr.path) &&
+# run error checks; if `errors` is a vector, also collect error messages
+# (with `nothing` this is allocation-free); returns whether any check failed
+function header_errors!(errors::Union{Vector{String}, Nothing}, hdr::Header)
+    err(e::String) = (errors === nothing || push!(errors, e); true)
+    bad  = isempty(hdr.path) &&
         err("path is empty")
-    0x0 in codeunits(hdr.path) &&
+    bad |= 0x0 in codeunits(hdr.path) &&
         err("path contains NUL bytes")
-    0x0 in codeunits(hdr.link) &&
+    bad |= 0x0 in codeunits(hdr.link) &&
         err("link contains NUL bytes")
-    !isempty(hdr.path) && hdr.path[1] == '/' &&
+    bad |= !isempty(hdr.path) && hdr.path[1] == '/' &&
         err("path is absolute")
-    occursin(r"(^|/)\.\.(/|$)", hdr.path) &&
+    bad |= has_dotdot_component(hdr.path) &&
         err("path contains '..' component")
-    hdr.type in (:file, :hardlink, :symlink, :directory) ||
+    bad |= hdr.type ∉ (:file, :hardlink, :symlink, :directory) &&
         err("unsupported entry type")
-    hdr.type ∉ (:hardlink, :symlink) && !isempty(hdr.link) &&
+    bad |= hdr.type ∉ (:hardlink, :symlink) && !isempty(hdr.link) &&
         err("non-link with link path")
-    hdr.type ∈ (:hardlink, :symlink) && isempty(hdr.link) &&
+    bad |= hdr.type ∈ (:hardlink, :symlink) && isempty(hdr.link) &&
         err("$(hdr.type) with empty link path")
-    hdr.type ∈ (:hardlink, :symlink) && hdr.size != 0 &&
+    bad |= hdr.type ∈ (:hardlink, :symlink) && hdr.size != 0 &&
         err("$(hdr.type) with non-zero size")
-    hdr.type == :hardlink && hdr.link[1] == '/' &&
+    bad |= hdr.type == :hardlink && !isempty(hdr.link) && hdr.link[1] == '/' &&
         err("hardlink with absolute link path")
-    hdr.type == :hardlink && occursin(r"(^|/)\.\.(/|$)", hdr.link) &&
+    bad |= hdr.type == :hardlink && has_dotdot_component(hdr.link) &&
         err("hardlink contains '..' component")
-    hdr.type == :directory && hdr.size != 0 &&
+    bad |= hdr.type == :directory && hdr.size != 0 &&
         err("directory with non-zero size")
-    hdr.type != :directory && endswith(hdr.path, "/") &&
+    bad |= hdr.type != :directory && endswith(hdr.path, "/") &&
         err("non-directory path ending with '/'")
-    hdr.type != :directory && (hdr.path == "." || endswith(hdr.path, "/.")) &&
+    bad |= hdr.type != :directory && (hdr.path == "." || endswith(hdr.path, "/.")) &&
         err("non-directory path ending with '.' component")
-    hdr.size < 0 &&
+    bad |= hdr.size < 0 &&
         err("negative file size")
-    isempty(errors) && return
+    return bad
+end
+
+function check_header(hdr::Header)
+    header_errors!(nothing, hdr) || return
+    errors = String[]
+    header_errors!(errors, hdr)
 
     # construct error message
     if length(errors) == 1

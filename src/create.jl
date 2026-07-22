@@ -161,43 +161,44 @@ function write_header(
     0x0 in codeunits(link) &&
         throw(ArgumentError("link contains NUL bytes: $(repr(path))"))
 
-    # determine if an extended header is needed
-    extended = Pair{String,String}[]
-    # WARNING: don't change the order of these insertions
-    # they are inserted and emitted in sorted order by key
-    if ncodeunits(link) > 100
-        push!(extended, "linkpath" => link)
-        link = "" # empty in standard header
-    end
     prefix = ""
     name = path
-    if ncodeunits(path) > 100
-        if ncodeunits(path) < 256
-            i = findprev('/', path, 100)
-            if i !== nothing
-                # try splitting into prefix and name
-                prefix = path[1:prevind(path, i)]
-                name   = path[nextind(path, i):end]
+    w = 0
+    # determine if an extended header is needed
+    if ncodeunits(link) > 100 || ncodeunits(path) > 100 || size ≥ 68719476736 # 8^12
+        extended = Pair{String,String}[]
+        # WARNING: don't change the order of these insertions
+        # they are inserted and emitted in sorted order by key
+        if ncodeunits(link) > 100
+            push!(extended, "linkpath" => link)
+            link = "" # empty in standard header
+        end
+        if ncodeunits(path) > 100
+            if ncodeunits(path) < 256
+                i = findprev('/', path, 100)
+                if i !== nothing
+                    # try splitting into prefix and name
+                    prefix = path[1:prevind(path, i)]
+                    name   = path[nextind(path, i):end]
+                end
+            end
+            if ncodeunits(name) > 100 || ncodeunits(prefix) > 155
+                push!(extended, "path" => path)
+                prefix = name = "" # empty in standard header
             end
         end
-        if ncodeunits(name) > 100 || ncodeunits(prefix) > 155
-            push!(extended, "path" => path)
-            prefix = name = "" # empty in standard header
+        if size ≥ 68719476736 # 8^12
+            push!(extended, "size" => string(size))
+            # still written in binary in standard header
+        end
+        # emit extended header if necessary
+        if !isempty(extended)
+            @assert issorted(extended)
+            w += write_extended_header(tar, extended, buf=buf)
         end
     end
-    if size ≥ 68719476736 # 8^12
-        push!(extended, "size" => string(size))
-        # still written in binary in standard header
-    end
-
-    # emit extended header if necessary
-    w = 0
-    if !isempty(extended)
-        @assert issorted(extended)
-        w += write_extended_header(tar, extended, buf=buf)
-    end
     # emit standard header
-    std_hdr = Header(hdr; link=link)
+    std_hdr = link === hdr.link ? hdr : Header(hdr; link=link)
     w += write_standard_header(tar, std_hdr, name=name, prefix=prefix, buf=buf)
 end
 
@@ -229,6 +230,17 @@ function write_extended_header(
     w += write_data(tar, seekstart(d), size=hdr.size, buf=buf)
 end
 
+# write the bytes of `s` into `buf` at 1-based offset `off`
+put_data!(buf::Vector{UInt8}, off::Int, s::String) =
+    copyto!(buf, off, codeunits(s), 1, ncodeunits(s))
+
+# write `n` as `pad` zero-padded octal digits at 1-based offset `off` (must fit)
+function put_octal!(buf::Vector{UInt8}, off::Int, n::Integer, pad::Int)
+    for i in 0:pad-1
+        buf[off + pad - 1 - i] = UInt8('0') + ((n >> 3i) % UInt8 & 0x07)
+    end
+end
+
 function write_standard_header(
     tar::IO,
     hdr::Header;
@@ -241,10 +253,6 @@ function write_standard_header(
     type = from_symbolic_type(hdr.type)
     link = hdr.link
 
-    # octal strings for size and mode
-    m = string(hdr.mode, base=8, pad=6)
-    s = string(hdr.size, base=8, pad=11)
-
     # error checking (presumes checks done by write_header)
     hdr.size < 0 &&
         throw(ArgumentError("negative file size is invalid: $(hdr.size)"))
@@ -254,54 +262,46 @@ function write_standard_header(
         throw(ArgumentError("path name too long for standard header: $(repr(name))"))
     ncodeunits(link) ≤ 100 ||
         throw(ArgumentError("symlink target too long for standard header: $(repr(link))"))
-    ncodeunits(m) ≤ 6 ||
-        throw(ArgumentError("mode too large for standard header: 0o$m"))
     isascii(type) ||
         throw(ArgumentError("non-ASCII type flag value: $(repr(type))"))
 
-    # construct header block
-    buf[1:512] .= 0x00
-    h = IOBuffer(buf, write=true, truncate=false)
-    write(h, name)              # name
-    seek(h, 100)
-    write(h, "$m \0")           # mode
-    write(h, "000000 \0")       # uid
-    write(h, "000000 \0")       # gid
-    if ncodeunits(s) ≤ 12       # size
-        write(h, s)
-        if ncodeunits(s) < 12
-            write(h, ' ')
-        end
+    # construct header block in buf; offsets are 1-based (see HEADER_FIELDS)
+    fill!(view(buf, 1:512), 0x00)
+    put_data!(buf, 1, name)             # name
+    put_octal!(buf, 101, hdr.mode, 6)   # mode (UInt16 always fits in 6 digits)
+    buf[107] = UInt8(' ')
+    put_data!(buf, 109, "000000 ")      # uid
+    put_data!(buf, 117, "000000 ")      # gid
+    if hdr.size < 8589934592            # 8^11: 11 octal digits and a space
+        put_octal!(buf, 125, hdr.size, 11)
+        buf[136] = UInt8(' ')
+    elseif hdr.size < 68719476736       # 8^12: 12 octal digits, no space
+        put_octal!(buf, 125, hdr.size, 12)
     else
         # emulate GNU tar: write binary size with leading bit set
         # can encode up to 2^95; Int64 size field only up to 2^63-1
-        write(h, 0x80 | ((hdr.size >> (8*11)) % UInt8))
+        buf[125] = 0x80 | ((hdr.size >> (8*11)) % UInt8)
         for i = 10:-1:0
-            write(h, (hdr.size >> 8i) % UInt8)
+            buf[136 - i] = (hdr.size >> 8i) % UInt8
         end
     end
-    write(h, "00000000000 ")    # mtime
-    write(h, "        ")        # chksum (blank)
-    write(h, type)              # typeflag
-    @assert position(h) == 157
-    write(h, link)              # linkname
-    seek(h, 257)
-    write(h, "ustar\0")         # magic
-    write(h, "00")              # version
-    skip(h, 64)                 # uname & gname
-    write(h, "000000 \0")       # devmajor
-    write(h, "000000 \0")       # devminor
-    @assert position(h) == 345
-    write(h, prefix)            # prefix
-    @assert position(h) <= 512
+    put_data!(buf, 137, "00000000000 ") # mtime
+    # chksum @ 149-156: computed once the rest is written
+    buf[157] = UInt8(type)              # typeflag
+    put_data!(buf, 158, link)           # linkname
+    put_data!(buf, 258, "ustar")        # magic (NUL-terminated by fill!)
+    put_data!(buf, 264, "00")           # version
+    # uname & gname: NULs from fill!
+    put_data!(buf, 330, "000000 ")      # devmajor
+    put_data!(buf, 338, "000000 ")      # devminor
+    put_data!(buf, 346, prefix)         # prefix
 
-    # fix header block checksum
+    # header block checksum: computed as if chksum field were spaces
     b = view(buf, 1:512)
-    c = string(sum(b), base=8, pad=6)
-    @assert ncodeunits(c) <= 6
-    seek(h, 148)
-    write(h, "$c\0 ")
-    @assert position(h) == 156
+    chksum = sum(b) + UInt32(' ') * 8
+    put_octal!(buf, 149, chksum, 6)     # ≤ 512×0xff, always fits in 6 digits
+    buf[155] = 0x00
+    buf[156] = UInt8(' ')
 
     # write header block
     w = write(tar, b)

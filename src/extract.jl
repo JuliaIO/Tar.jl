@@ -2,7 +2,7 @@ const PathInfo = Union{String, Int64, Symbol}
 
 struct GitLeaf
     mode::String
-    hash::String
+    hash::Vector{UInt8} # raw digest bytes
 end
 
 struct GitTree
@@ -17,6 +17,8 @@ function iterate_headers(
     strict::Bool = !raw,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 )
+    fields_arg = hasmethod(callback, Tuple{Header, Vector{Pair{Symbol, String}}})
+    raw_arg = !fields_arg && hasmethod(callback, Tuple{Header, Vector{UInt8}})
     eof(tar) && return
     hdr = read_standard_header(tar, buf=buf)
     hdr === nothing && return
@@ -42,9 +44,9 @@ function iterate_headers(
     @label loop
         hdr === nothing && break
         strict && check_header(hdr)
-        if hasmethod(callback, Tuple{Header, Vector{Pair{Symbol, String}}})
+        if fields_arg
             callback(hdr, dump_header(buf))
-        elseif hasmethod(callback, Tuple{Header, Vector{UInt8}})
+        elseif raw_arg
             callback(hdr, buf[1:512])
         else
             callback(hdr)
@@ -84,6 +86,7 @@ function extract_tarball(
     set_permissions::Bool = true,
 )
     root = normpath(root)
+    last_dir = Ref("") # last path confirmed to be an existing directory
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
         Sys.iswindows() && check_windows_path(hdr.path, parts)
         # get the file system version of the path
@@ -93,14 +96,22 @@ function extract_tarball(
         sys_path = sys_path == "." ? root : normpath(root, sys_path)
         startswith(sys_path, root) ||
             error("attempt to extract relative path outside of root at $(repr(sys_path)) from $(repr(hdr.path))")
-        src_path = joinpath(root, hdr.link)
+        src_path = hdr.type == :hardlink ? joinpath(root, hdr.link) : ""
+        # ensure dirname(sys_path) is a directory; a cached `last_dir` stays
+        # valid since the only removals below are of paths strictly under it
         dir = dirname(sys_path)
-        st = stat(dir)
-        # ensure dirname(sys_path) is a directory
-        if !isdir(st)
-            ispath(st) && rm(dir, force=true, recursive=true)
-            mkpath(dir)
-        elseif hdr.type != :hardlink || src_path != sys_path
+        dir_existed = true
+        if dir != last_dir[]
+            st = stat(dir)
+            if !isdir(st)
+                ispath(st) && rm(dir, force=true, recursive=true)
+                mkpath(dir)
+                dir_existed = false
+            end
+            last_dir[] = dir
+        end
+        # remove any existing path at sys_path (fresh directories are empty)
+        if dir_existed && (hdr.type != :hardlink || src_path != sys_path)
             st = lstat(sys_path)
             hdr.type == :directory && isdir(st) && return # from callback
             ispath(st) && rm(sys_path, force=true, recursive=true)
@@ -122,6 +133,7 @@ function extract_tarball(
             exec = 0o100 & hdr.mode != 0
             tar_mode = exec ? 0o755 : 0o644
             sys_mode = filemode(sys_path)
+            cur_mode = sys_mode & 0o7777
             if exec
                 # copy read bits to execute bits with
                 # at least the user execute bit on
@@ -130,7 +142,9 @@ function extract_tarball(
                 # create an executable with default mode but
                 # we don't have a way to do that afaik
             end
-            chmod(sys_path, tar_mode & sys_mode)
+            new_mode = tar_mode & sys_mode
+            # skip the chmod syscall when it would be a no-op
+            new_mode == cur_mode || chmod(sys_path, new_mode)
         end
     end
     copy_symlinks || return
@@ -275,7 +289,7 @@ function git_tree_hash(
     end
 
     # reduce the tree to a single hash value
-    return hash_git_tree(tree, HashType)[end]
+    return bytes2hex(hash_git_tree(tree, HashType)[end])
 end
 
 prune_empty!(node::GitLeaf) = true
@@ -290,13 +304,27 @@ function hash_git_tree(node::GitLeaf, ::Type{HashType}) where HashType <: SHA.SH
     return (node.mode, node.hash)
 end
 
+# git sorts tree entries as if directory names had a trailing slash
+function git_tree_lt(x::Pair, y::Pair)
+    a = x.first::String
+    b = y.first::String
+    na, nb = ncodeunits(a), ncodeunits(b)
+    la = na + (x.second isa GitTree)
+    lb = nb + (y.second isa GitTree)
+    for i in 1:min(la, lb)
+        ca = i ≤ na ? codeunit(a, i) : UInt8('/')
+        cb = i ≤ nb ? codeunit(b, i) : UInt8('/')
+        ca == cb || return ca < cb
+    end
+    return la < lb
+end
+
 function hash_git_tree(node::GitTree, ::Type{HashType}) where HashType <: SHA.SHA_CTX
-    by((name, child)) = child isa GitTree ? "$name/" : name
     hash = git_object_hash("tree", HashType) do io
-        for (name, child) in sort!(collect(node.children), by=by)
+        for (name, child) in sort!(collect(node.children), lt=git_tree_lt)
             mode, child_hash = hash_git_tree(child, HashType)
             print(io, mode, ' ', name, '\0')
-            write(io, hex2bytes(child_hash))
+            write(io, child_hash)
         end
     end
     return ("40000", hash)
@@ -311,7 +339,24 @@ function git_object_hash(
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
     SHA.update!(ctx, body)
-    return bytes2hex(SHA.digest!(ctx))
+    return SHA.digest!(ctx)
+end
+
+# write "<kind> <size>\0" into the start of buf, returning the byte count
+function git_object_prefix!(buf::Vector{UInt8}, kind::String, size::Integer)
+    n = ncodeunits(kind)
+    copyto!(buf, 1, codeunits(kind), 1, n)
+    buf[n += 1] = UInt8(' ')
+    n += ndigits(size)
+    s, i = size, n
+    while true
+        buf[i] = UInt8('0') + (s % 10) % UInt8
+        s = div(s, 10)
+        s == 0 && break
+        i -= 1
+    end
+    buf[n += 1] = 0x00
+    return n
 end
 
 function git_file_hash(
@@ -321,7 +366,7 @@ function git_file_hash(
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
 ) where HashType <: SHA.SHA_CTX
     ctx = HashType()
-    SHA.update!(ctx, codeunits("blob $size\0"))
+    SHA.update!(ctx, view(buf, 1:git_object_prefix!(buf, "blob", size)))
     # TODO: this largely duplicates the logic of read_data
     # read_data could be used directly if SHA offered an interface
     # where you write data to an IO object and it maintains a hash
@@ -336,7 +381,7 @@ function git_file_hash(
         padded_size -= read_len
     end
     @assert size == padded_size == 0
-    return bytes2hex(SHA.digest!(ctx))
+    return SHA.digest!(ctx)
 end
 
 const SKELETON_MAGIC = "%!skeleton:\x83\xe6\xa8\xfe"
@@ -373,33 +418,51 @@ function read_tarball(
     # symbols for path types except symlinks store the link
     paths = Dict{String, PathInfo}()
     globals = Dict{String,String}()
+    can_position = applicable(position, tar)
+    any_symlinks = false
     while !eof(tar)
         hdr = read_header(tar, globals=globals, buf=buf, tee=skeleton)
         hdr === nothing && break
         err = nothing
-        # normalize path and check for symlink attacks
-        path = ""
-        for part in split(hdr.path, '/')
+        # normalize path: drop empty and "." components
+        parts = split(hdr.path, '/')
+        n_parts = length(parts)
+        filter!(parts) do part
             # check_header checks for ".." later
-            (isempty(part) || part == ".") && continue
-            if err === nothing && get(paths, path, nothing) isa String
-                err = """
-                Tarball contains path with symlink prefix:
-                - path = $(repr(hdr.path))
-                - prefix = $(repr(path))
-                Refusing to extract — possible attack!
-                """
-            end
-            path = isempty(path) ? String(part) : "$path/$part"
+            !isempty(part) && part != "."
         end
-        hdr′ = Header(hdr, path=path)
+        if length(parts) == n_parts # already normalized
+            path = hdr.path
+            hdr′ = hdr
+        else
+            path = join(parts, '/')
+            hdr′ = Header(hdr, path=path)
+        end
+        # check for symlink prefixes (possible attack); only symlink
+        # records store a String, so without one no prefix can match
+        if any_symlinks
+            plen = 0 # byte length of the prefix of `path` before current part
+            for part in parts
+                prefix = SubString(path, 1, thisind(path, plen))
+                if get(paths, prefix, nothing) isa String
+                    err = """
+                    Tarball contains path with symlink prefix:
+                    - path = $(repr(hdr.path))
+                    - prefix = $(repr(prefix))
+                    Refusing to extract — possible attack!
+                    """
+                    break
+                end
+                plen += ncodeunits(part) + (plen > 0 ? 1 : 0)
+            end
+        end
         # check that hardlinks refer to already-seen files
         if err === nothing && hdr.type == :hardlink
-            parts = filter!(split(hdr.link, '/')) do part
+            link_parts = filter!(split(hdr.link, '/')) do part
                 # check_header checks for ".." later
                 !isempty(part) && part != "."
             end
-            link = join(parts, '/')
+            link = join(link_parts, '/')
             hdr = Header(hdr, link=link)
             hdr′ = Header(hdr′, link=link)
             what = get(paths, link, Symbol("non-existent"))
@@ -422,14 +485,15 @@ function read_tarball(
         check_header(hdr)
         err === nothing || error(err)
         # record info about path
+        any_symlinks |= hdr.type == :symlink
         paths[path] =
             hdr.type == :symlink ? hdr.link :
             hdr.type == :file    ? hdr.size :
             hdr.type
         # apply callback, checking that it consumes IO correctly
-        before = applicable(position, tar) ? position(tar) : 0
-        callback(hdr, split(path, '/', keepempty=false))
-        applicable(position, tar) || continue
+        before = can_position ? position(tar) : 0
+        callback(hdr, parts)
+        can_position || continue
         advanced = position(tar) - before
         expected = round_up(hdr.size)
         advanced == expected ||
@@ -457,10 +521,12 @@ function read_header(
     tee::IO = devnull,
 )
     # process zero or more extended headers
-    metadata = copy(globals)
+    # metadata dict is only materialized when needed (common case: not)
+    metadata = isempty(globals) ? nothing : copy(globals)
     while true
         if hdr.type in (:g, :x) # POSIX extended headers
-            let hdr=hdr         # https://github.com/JuliaLang/julia/issues/15276
+            metadata === nothing && (metadata = Dict{String,String}())
+            let hdr=hdr, metadata=metadata # https://github.com/JuliaLang/julia/issues/15276
                 read_extended_metadata(io, hdr.size, buf=buf, tee=tee) do key, val
                     if key in ("size", "path", "linkpath")
                         if hdr.type == :g
@@ -477,6 +543,7 @@ function read_header(
                 error("malformed GNU long header (trailing `\\0` expected): " *
                       repr(String(data)))
             key = hdr.type == :L ? "path" : "linkpath"
+            metadata === nothing && (metadata = Dict{String,String}())
             metadata[key] = String(@view data[1:end-1])
         else
             break # non-extension header block
@@ -484,6 +551,7 @@ function read_header(
         hdr = read_standard_header(io, buf=buf, tee=tee)
         hdr === nothing && throw(EOFError())
     end
+    metadata === nothing && return hdr
     # determine final values for size, path & link
     size = hdr.size
     if "size" in keys(metadata)
@@ -642,9 +710,20 @@ function read_standard_header(
 end
 
 function check_version_field(buf::AbstractVector{UInt8})
-    version = read_header_str(buf, :version)
-    occursin(r"^0* *$", version) && return
-    header_error(buf, "invalid version string for tar file: $(repr(version))")
+    # match r"^0* *$" against the NUL-terminated version field
+    seen_space = false
+    for i in index_range(:version)
+        byte = buf[i]
+        byte == 0x00 && return # NUL terminates the field
+        if byte == UInt8(' ')
+            seen_space = true
+        elseif byte == UInt8('0') && !seen_space
+            # leading zeros are valid
+        else
+            version = read_header_str(buf, :version)
+            header_error(buf, "invalid version string for tar file: $(repr(version))")
+        end
+    end
 end
 
 function check_checksum_field(buf::AbstractVector{UInt8})
@@ -684,7 +763,10 @@ function read_header_str(buf::AbstractVector{UInt8}, fld::Symbol)
     r = index_range(fld)
     for i in r
         byte = buf[i]
-        byte == 0 && return String(@view buf[first(r):i-1])
+        if byte == 0
+            i == first(r) && return ""
+            return String(@view buf[first(r):i-1])
+        end
     end
     return String(buf[r])
 end
