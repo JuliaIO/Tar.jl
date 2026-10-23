@@ -1086,6 +1086,35 @@ end
         @test open(Tar.read_header, tarball) == hdr
         @test Tar.list(tarball) == [hdr]
     end
+    @testset "prefix field only in ustar headers" begin
+        buf = IOBuffer()
+        Tar.write_header(buf, Tar.Header("file", :file, 0o644, 0, ""))
+        data = Tar.dump_header(take!(buf))
+        # ustar: prefix is joined with name
+        tarball = write_modified_header(data, :prefix => "dir")
+        @test open(Tar.read_header, tarball).path == "dir/file"
+        # old GNU: bytes 345:357 are atime, not a path prefix
+        tarball = write_modified_header(data,
+            :magic => "ustar ", :version => " \0", :prefix => "00000000001")
+        @test open(Tar.read_header, tarball).path == "file"
+        # v7: no magic, no prefix field
+        tarball = write_modified_header(data,
+            :magic => "", :version => "", :prefix => "dir")
+        @test open(Tar.read_header, tarball).path == "file"
+        # nonstandard versions: like GNU tar, only the magic field matters
+        for (magic, version, path) in [
+                ("ustar\0", " \0", "dir/file"),
+                ("ustar\0", "\0\0", "dir/file"),
+                ("ustar\0", "  ",   "dir/file"),
+                ("ustar ",  "00",   "file"),
+                ("ustar ",  "\0\0", "file"),
+                ("ustarX",  "00",   "file"),
+            ]
+            tarball = write_modified_header(data,
+                :magic => magic, :version => version, :prefix => "dir")
+            @test open(Tar.read_header, tarball).path == path
+        end
+    end
     @testset "header errors" begin
         # generate a valid header
         buf = IOBuffer()

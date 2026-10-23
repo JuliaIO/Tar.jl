@@ -700,7 +700,9 @@ function read_standard_header(
     mode = read_header_int(buf, :mode)
     type = read_header_chr(buf, :typeflag)
     link = read_header_str(buf, :linkname)
-    prefix = read_header_str(buf, :prefix)
+    # only ustar headers have a prefix field: old GNU headers use those
+    # bytes for atime, ctime, etc. and v7 headers don't have one at all
+    prefix = has_prefix_field(buf) ? read_header_str(buf, :prefix) : ""
     # check that mode isn't too big
     mode ≤ typemax(UInt16) ||
         header_error(buf, "mode value too large: $(string(mode, base=8))")
@@ -708,6 +710,11 @@ function read_standard_header(
     path = isempty(prefix) ? name : "$prefix/$name"
     return Header(path, to_symbolic_type(type), mode, size, link)
 end
+
+# ustar headers have magic "ustar\0" (version is ignored, as GNU tar does);
+# old GNU ("ustar ") and v7 headers have no prefix field
+has_prefix_field(buf::AbstractVector{UInt8}) =
+    view(buf, index_range(:magic)) == codeunits("ustar\0")
 
 function check_version_field(buf::AbstractVector{UInt8})
     # match r"^0* *$" against the NUL-terminated version field
