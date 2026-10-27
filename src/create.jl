@@ -27,6 +27,7 @@ function create_tarball(
         end
         return hdr, paths
     end
+    write_end_of_archive(tar, buf=buf)
 end
 
 function recreate_tarball(
@@ -97,7 +98,12 @@ function rewrite_tarball(
             return hdr′, data
         end
     end
+    write_end_of_archive(new_tar, buf=buf)
 end
+
+# POSIX: the archive ends with two 512-byte blocks of zeros
+write_end_of_archive(tar::IO; buf::Vector{UInt8}) =
+    write(tar, fill!(view(buf, 1:1024), 0))
 
 function write_tarball(
     callback::Function,

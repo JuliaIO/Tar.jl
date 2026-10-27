@@ -209,6 +209,7 @@ end
     data = rand(UInt8, len)
     with_tarball(
         Tar.Header("file", :file, 0o644, len, ""), data, fill(0x0, pad),
+        zeros(UInt8, 1024),
     ) do tarball
         @testset "tarball is well-formed" begin
             @test Tar.list(tarball) == [Tar.Header("file", :file, 0o644, len, "")]
@@ -641,6 +642,7 @@ end
             tarball = Tar.create(dir)
             bytes = read(tarball)
             @test isfile(tarball)
+            @test bytes[end-1023:end] == zeros(UInt8, 1024)
             rm(tarball)
 
             # create(dir, tarball)
@@ -720,22 +722,36 @@ end
         end
     end
 
-    # add a sketchy entry to tarball
-    open(tarball, append=true) do io
+    # add a sketchy entry to tarball, before the end-of-archive marker
+    open(tarball, "r+") do io
+        seek(io, filesize(io) - 1024)
         Tar.write_header(io, Tar.Header("/bad", :file, 0o644, 0, ""))
+        write(io, zeros(UInt8, 1024))
     end
     paths = push!(copy(test_dir_paths), "/bad")
 
     # list([callback,] tarball; strict=true|false)
     arg_readers(tarball) do tar
-        @arg_test tar @test_throws ErrorException Tar.list(tar)
-        @arg_test tar @test_throws ErrorException Tar.list(tar, strict=true)
+        @arg_test tar begin
+            @test_throws ErrorException Tar.list(tar)
+            read(tar) # consume the rest
+        end
+        @arg_test tar begin
+            @test_throws ErrorException Tar.list(tar, strict=true)
+            read(tar) # consume the rest
+        end
         @arg_test tar begin
             headers = Tar.list(tar, strict=false)
             @test paths == [hdr.path for hdr in headers]
         end
-        @arg_test tar @test_throws ErrorException tar_count(tar)
-        @arg_test tar @test_throws ErrorException tar_count(tar, strict=true)
+        @arg_test tar begin
+            @test_throws ErrorException tar_count(tar)
+            read(tar) # consume the rest
+        end
+        @arg_test tar begin
+            @test_throws ErrorException tar_count(tar, strict=true)
+            read(tar) # consume the rest
+        end
         @arg_test tar @test n + 1 == tar_count(tar, strict=false)
     end
     rm(tarball)
@@ -1214,6 +1230,7 @@ end
     # create reference tarball
     with_tarball(
         Tar.Header("file", :file, 0o755, len, ""), data, fill(0x0, pad),
+        zeros(UInt8, 1024),
     ) do reference
         hash = tree_hash(Tar.extract(reference))
         # create tarball with self-referential hard link
