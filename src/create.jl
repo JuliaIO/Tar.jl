@@ -9,12 +9,12 @@ end
 RewriteTree() = RewriteTree(Dict{String, Union{RewriteTree, RewriteEntry}}())
 
 function create_tarball(
-    predicate::Function,
+    predicate::F,
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     portable::Bool = false,
-)
+) where {F <: Function}
     write_tarball(tar, root, buf=buf) do sys_path, tar_path
         portable && check_windows_path(tar_path)
         hdr = path_header(sys_path, tar_path)
@@ -51,12 +51,12 @@ function recreate_tarball(
 end
 
 function rewrite_tarball(
-    predicate::Function,
+    predicate::F,
     old_tar::IO,
     new_tar::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     portable::Bool = false,
-)
+) where {F <: Function}
     tree = RewriteTree()
     read_tarball(predicate, old_tar; buf=buf) do hdr, parts
         portable && check_windows_path(hdr.path, parts)
@@ -100,12 +100,12 @@ function rewrite_tarball(
 end
 
 function write_tarball(
-    callback::Function,
+    callback::F,
     tar::IO,
     sys_path::Any,
     tar_path::String = ".";
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
+) where {F <: Function}
     hdr, data = callback(sys_path, tar_path)::Tuple{Header,Any}
     if hdr.type == :directory
         data isa Union{Nothing, AbstractDict{<:AbstractString}} ||

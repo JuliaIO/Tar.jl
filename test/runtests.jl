@@ -1229,6 +1229,35 @@ end
     end
 end
 
+# a `Function` argument that a method only passes on is not specialized on by default,
+# so the callback would be called dynamically; checked in a fresh process, since inference
+# and reflection elsewhere may compile methods for `Function` arguments
+if VERSION ≥ v"1.10" # Base.specializations
+    @testset "callback specialization" begin
+        code = raw"""
+        import Tar
+        dir = mktempdir()
+        write(joinpath(dir, "file"), "data")
+        tarball = Tar.create(path -> true, dir, tempname())
+        Tar.list(hdr -> nothing, tarball)
+        Tar.extract(hdr -> true, tarball, mktempdir())
+        Tar.rewrite(hdr -> true, tarball, tempname())
+        Tar.tree_hash(hdr -> true, tarball)
+        Tar.read_extended_metadata((key, value) -> nothing, IOBuffer("6 a=b\n" * "\0"^506), 6)
+        unspecialized = [mi.specTypes for name in names(Tar; all=true)
+                         for f in (getfield(Tar, name),) if f isa Function
+                         for m in methods(f) if m.module === Tar
+                         for mi in Base.specializations(m) if Function in mi.specTypes.parameters]
+        print(isempty(unspecialized) ? "none" : unspecialized)
+        """
+        project = Base.active_project()
+        project_flag = project === nothing ? `` : `--project=$project`
+        cmd = `$(Base.julia_cmd()) --startup-file=no $project_flag -e $code`
+        load_path = join(LOAD_PATH, Sys.iswindows() ? ';' : ':')
+        @test "none" == read(addenv(cmd, "JULIA_LOAD_PATH" => load_path), String)
+    end
+end
+
 if isdefined(Docs, :undocumented_names) # new in Julia 1.11
     @testset "Docstrings" begin
         @test isempty(Docs.undocumented_names(Tar))

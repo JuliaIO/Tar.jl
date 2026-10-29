@@ -11,12 +11,12 @@ end
 GitTree() = GitTree(Dict{String, Union{GitTree, GitLeaf}}())
 
 function iterate_headers(
-    callback::Function,
+    callback::F,
     tar::IO;
     raw::Bool = false,
     strict::Bool = !raw,
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-)
+) where {F <: Function}
     fields_arg = hasmethod(callback, Tuple{Header, Vector{Pair{Symbol, String}}})
     raw_arg = !fields_arg && hasmethod(callback, Tuple{Header, Vector{UInt8}})
     eof(tar) && return
@@ -77,14 +77,14 @@ function copy_mode(src::String, dst::String)
 end
 
 function extract_tarball(
-    predicate::Function,
+    predicate::F,
     tar::IO,
     root::String;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     skeleton::IO = devnull,
     copy_symlinks::Bool = false,
     set_permissions::Bool = true,
-)
+) where {F <: Function}
     root = normpath(root)
     last_dir = Ref("") # last path confirmed to be an existing directory
     paths = read_tarball(predicate, tar; buf=buf, skeleton=skeleton) do hdr, parts
@@ -238,12 +238,12 @@ function link_target(
 end
 
 function git_tree_hash(
-    predicate::Function,
+    predicate::F,
     tar::IO,
     ::Type{HashType},
     skip_empty::Bool;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
-) where HashType <: SHA.SHA_CTX
+) where {F <: Function, HashType <: SHA.SHA_CTX}
     # build tree with leaves for files and symlinks
     tree = GitTree()
     read_tarball(predicate, tar; buf=buf) do hdr, parts
@@ -331,10 +331,10 @@ function hash_git_tree(node::GitTree, ::Type{HashType}) where HashType <: SHA.SH
 end
 
 function git_object_hash(
-    emit::Function,
+    emit::F,
     kind::AbstractString,
     ::Type{HashType},
-) where HashType <: SHA.SHA_CTX
+) where {F <: Function, HashType <: SHA.SHA_CTX}
     ctx = HashType()
     body = codeunits(sprint(emit))
     SHA.update!(ctx, codeunits("$kind $(length(body))\0"))
@@ -408,12 +408,12 @@ function check_skeleton_header(
 end
 
 function read_tarball(
-    callback::Function,
-    predicate::Function,
+    callback::F,
+    predicate::G,
     tar::IO;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     skeleton::IO = devnull,
-)
+) where {F <: Function, G <: Function}
     write_skeleton_header(skeleton, buf=buf)
     # symbols for path types except symlinks store the link
     paths = Dict{String, PathInfo}()
@@ -569,12 +569,12 @@ end
 using Base.Checked: mul_with_overflow, add_with_overflow
 
 function read_extended_metadata(
-    callback::Function,
+    callback::F,
     io::IO,
     size::Integer;
     buf::Vector{UInt8} = Vector{UInt8}(undef, DEFAULT_BUFFER_SIZE),
     tee::IO = devnull,
-)
+) where {F <: Function}
     size > typemax(Int32) &&
         error("read_extended_metadata called with too large size: $size")
     size = Int(size)
@@ -687,7 +687,7 @@ function read_standard_header(
         check_checksum_field(buf)
     catch err
         if err isa ErrorException
-            m = match(r"^(.*?)\s*\[header block data\]"s, String(err.msg)::String)::RegexMatch
+            m = match(r"^(.*?)\s*\[header block data\]"s, err.msg::String)::RegexMatch
             msg = something(m.captures[1])
             msg = "This does not appear to be a TAR file/stream — $msg. Note: Tar.jl does not handle decompression; if the tarball is compressed you must use an external command like `gzcat` or package like CodecZlib.jl to decompress it. See the README file for examples."
             err = ErrorException(msg)
