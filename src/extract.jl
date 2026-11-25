@@ -65,6 +65,30 @@ follow_symlink_chain(seen::Vector, what::String, paths) =
     what in seen ? :symlink :
         follow_symlink_chain(push!(seen, what), paths[what], paths)
 
+# extra hardening: check that none of the first `n` components of `parts` is
+# a symlink on disk; `root` starts out empty, so any symlink under it was
+# created by an earlier entry, and extracting through one is never allowed
+# (read_tarball checks this against the tarball's paths; this checks the disk)
+function check_no_symlinks(
+    root::String,
+    parts::AbstractVector{<:AbstractString},
+    n::Int, # number of leading components of `parts` to check
+    path::AbstractString,
+)
+    sys_path = root
+    for i = 1:n
+        sys_path = joinpath(sys_path, parts[i])
+        st = lstat(sys_path)
+        islink(st) && error("""
+            Tarball contains path with symlink prefix on disk:
+            - path = $(repr(path))
+            - prefix = $(repr(join(view(parts, 1:i), '/')))
+            Refusing to extract — possible attack!
+            """)
+        isdir(st) || return # nothing below a non-directory to check
+    end
+end
+
 # our `cp` doesn't copy ACL properties, so manually set them via `chmod`
 function copy_mode(src::String, dst::String)
     chmod(dst, filemode(src))
@@ -96,12 +120,19 @@ function extract_tarball(
         sys_path = sys_path == "." ? root : normpath(root, sys_path)
         startswith(sys_path, root) ||
             error("attempt to extract relative path outside of root at $(repr(sys_path)) from $(repr(hdr.path))")
-        src_path = hdr.type == :hardlink ? joinpath(root, hdr.link) : ""
+        src_path = ""
+        if hdr.type == :hardlink
+            src_path = joinpath(root, hdr.link)
+            # cp would read through a symlink and chmod would follow one
+            link_parts = split(hdr.link, '/')
+            check_no_symlinks(root, link_parts, length(link_parts), hdr.link)
+        end
         # ensure dirname(sys_path) is a directory; a cached `last_dir` stays
         # valid since the only removals below are of paths strictly under it
         dir = dirname(sys_path)
         dir_existed = true
         if dir != last_dir[]
+            check_no_symlinks(root, parts, length(parts)-1, hdr.path)
             st = stat(dir)
             if !isdir(st)
                 ispath(st) && rm(dir, force=true, recursive=true)
