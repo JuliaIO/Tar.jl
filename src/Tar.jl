@@ -13,6 +13,10 @@ end
 
 const true_predicate = _ -> true
 
+# callbacks are typed `f::F` with `F <: Function` rather than `f::Function`: Julia does not
+# specialize a method on a `Function` argument it only passes on (as every method with keyword
+# arguments does, to its body), which would make calling the callback a dynamic dispatch
+
 # 2 MiB to take advantage of THP if enabled
 const DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024
 
@@ -95,12 +99,12 @@ Windows, which ensures that they don't contain illegal characters or have names
 that are reserved. See https://stackoverflow.com/a/31976060/659248 for details.
 """
 function create(
-    predicate::Function,
+    predicate::F,
     dir::AbstractString,
     tarball::Union{ArgWrite, Nothing} = nothing;
     skeleton::Union{ArgRead, Nothing} = nothing,
     portable::Bool = false,
-)
+) where {F <: Function}
     dir = String(dir)
     check_create_dir(dir)
     if skeleton === nothing
@@ -160,11 +164,11 @@ If the `tarball` argument is a skeleton file (see `extract` and `create`) then
 the headers of the skeleton file.
 """
 function list(
-    callback::Function,
+    callback::F,
     tarball::ArgRead;
     raw::Bool = false,
     strict::Bool = !raw,
-)
+) where {F <: Function}
     raw && strict &&
         error("`raw=true` and `strict=true` options are incompatible")
     arg_read(tarball) do tar
@@ -235,13 +239,13 @@ copy symlinks if they cannot be created.
 If `set_permissions` is `false`, no permissions are set on the extracted files.
 """
 function extract(
-    predicate::Function,
+    predicate::F,
     tarball::ArgRead,
     dir::Union{AbstractString, Nothing} = nothing;
     skeleton::Union{ArgWrite, Nothing} = nothing,
     copy_symlinks::Union{Bool, Nothing} = nothing,
     set_permissions::Bool = true,
-)
+) where {F <: Function}
     predicate === true_predicate || skeleton === nothing ||
         error("extract: predicate and skeleton cannot be used together")
     skeleton = something(skeleton, devnull)
@@ -317,11 +321,11 @@ Windows, which ensures that they don't contain illegal characters or have names
 that are reserved. See https://stackoverflow.com/a/31976060/659248 for details.
 """
 function rewrite(
-    predicate::Function,
+    predicate::F,
     old_tarball::ArgRead,
     new_tarball::Union{ArgWrite, Nothing} = nothing;
     portable::Bool = false,
-)
+) where {F <: Function}
     old_tarball = check_rewrite_old_tarball(old_tarball)
     arg_read(old_tarball) do old_tar
         arg_write(new_tarball) do new_tar
@@ -396,11 +400,11 @@ git repo), however, it is recommended that you hash them using a tool (such as
 this one) that does not ignore empty directories.
 """
 function tree_hash(
-    predicate::Function,
+    predicate::F,
     tarball::ArgRead;
     algorithm::AbstractString = "git-sha1",
     skip_empty::Bool = false,
-)
+) where {F <: Function}
     check_tree_hash_tarball(tarball)
     if algorithm == "git-sha1"
         return arg_read(tarball) do tar
