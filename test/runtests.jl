@@ -384,6 +384,30 @@ end
     rm(tmpd)
 end
 
+!Sys.iswindows() &&
+@testset "check for symlinks on disk" begin
+    tmpd = mktempdir() # external link target
+    root = mktempdir()
+    mkdir(joinpath(root, "dir"))
+    touch(joinpath(root, "file"))
+    symlink(tmpd, joinpath(root, "link"))
+    symlink(tmpd, joinpath(root, "dir", "link"))
+    for path in ["x", "dir", "dir/x", "new/x", "file", "file/x"]
+        parts = split(path, '/')
+        @test Tar.check_no_symlinks(root, parts, length(parts), path) === nothing
+    end
+    for path in ["link", "link/x", "dir/link", "dir/link/x"]
+        parts = split(path, '/')
+        test_error_prefix("Tarball contains path with symlink prefix on disk") do
+            Tar.check_no_symlinks(root, parts, length(parts), path)
+        end
+    end
+    # only the first `n` components are checked
+    @test Tar.check_no_symlinks(root, ["link"], 0, "link") === nothing
+    rm(root, recursive=true)
+    rm(tmpd)
+end
+
 @testset "overwrites" begin
     tmp = mktempdir() # external link target
     file = Tar.Header("file", :file, 0o755, 0, "")
